@@ -18,7 +18,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  CreditCard,
   ExternalLink,
   Leaf,
   LoaderCircle,
@@ -868,28 +867,22 @@ export default function Dashboard() {
                     </div>
                   ) : (
                     <>
-                      <div className="alert neutral">
-                        {plan.retailBasket.storeName} ·{" "}
-                        {plan.retailBasket.environment === "certification"
-                          ? "Kroger certification test data"
-                          : "Kroger store prices"}
-                        <br />
-                        Updated{" "}
-                        {new Date(plan.retailBasket.fetchedAt).toLocaleString(
-                          "en-US",
-                          { hour12: true },
-                        )}
-                        . {plan.retailBasket.unresolved} items need review.
-                        {plan.simulationQuote
-                          ? " Test checkout uses mock amounts for unpriced items and checkout charges. These are not Kroger quotes."
-                          : " Final delivery fees, tax, tips, and availability are not quoted; real purchases are on hold."}
-                        {plan.simulationQuote?.missingItems.map((item) => (
-                          <p key={item.name}>
-                            {item.name}: {money(item.amountCents)} mock package
-                            price (test only)
-                          </p>
-                        ))}
-                      </div>
+                      <section className="pricing-summary" aria-label="Grocery pricing summary">
+                        <div className="pricing-summary-heading">
+                          <div><h3>{plan.retailBasket.storeName}</h3><p>{plan.retailBasket.environment === "certification" ? "Kroger certification test data" : "Kroger store prices"}</p></div>
+                          <span className="status draft">{plan.retailBasket.unresolved > 0 ? `${plan.retailBasket.unresolved} ${plan.retailBasket.unresolved === 1 ? "item needs" : "items need"} review` : "All items priced"}</span>
+                        </div>
+                        <p className="pricing-updated">Updated {new Date(plan.retailBasket.fetchedAt).toLocaleString("en-US", {month:"short", day:"numeric", hour:"numeric", minute:"2-digit", hour12:true})}</p>
+                        <p>{plan.simulationQuote ? "Test checkout uses mock amounts for unpriced ingredients, fees, and tax. These are not Kroger quotes." : "Final fees, tax, tips, and availability are not confirmed. Real purchases are on hold."}</p>
+                        {plan.retailBasket.unresolved > 0 && <details className="pricing-review">
+                          <summary>Needs review · ingredients without confirmed prices</summary>
+                          <p>Unavailable products are hidden from the shopping list. These ingredients still need a match.</p>
+                          <dl>{Array.from(new Set(plan.retailBasket.batches.flatMap(batch => batch.lines.filter(line => line.unitPriceCents === undefined).map(line => line.name)))).map(name => {
+                            const mock = plan.simulationQuote?.missingItems.find(item => item.name === name);
+                            return <div key={name}><dt>{name.replace(/^(?:c\.\s+|pinch\s+|to serve\s+)/i, "")} </dt><dd>{mock ? <>{money(mock.amountCents)}<small>Mock package price</small></> : "Not priced"}</dd></div>;
+                          })}</dl>
+                        </details>}
+                      </section>
                       {plan.retailBasket.batches.map((batch, i) => (
                         <section className="panel" key={batch.batchId}>
                           <div className="panel-heading">
@@ -908,7 +901,8 @@ export default function Dashboard() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {batch.lines.map((line, j) => (
+                                {batch.lines.every(line => line.unitPriceCents === undefined) && <tr><td colSpan={5}>No priced products available for this delivery. See ingredients needing review above.</td></tr>}
+                                {batch.lines.filter(line => line.unitPriceCents !== undefined).map((line, j) => (
                                   <tr key={j}>
                                     <td>
                                       {line.name}
@@ -978,16 +972,6 @@ export default function Dashboard() {
                         cooking.
                       </p>
                     </div>
-                    {plan && (
-                      <button
-                        className="secondary"
-                        disabled={!!busy || plan.status !== "approved"}
-                        onClick={() => planAction("sandbox/run")}
-                      >
-                        <Truck size={16} />
-                        Simulate orders now
-                      </button>
-                    )}
                   </div>
                   {!plan ? (
                     <Empty onClick={() => setSettings(true)} />
@@ -1062,7 +1046,7 @@ export default function Dashboard() {
                                 })
                               }
                             >
-                              Cancel sandbox order
+                              Cancel delivery
                             </button>
                           )}
                         </section>
@@ -1077,102 +1061,7 @@ export default function Dashboard() {
                       scheduled times.
                     </div>
                   )}
-                  <section className="panel payment-panel">
-                    <div>
-                      <span className="eyebrow">STRIPE TEST MODE</span>
-                      <h2>A checkout without the charge.</h2>
-                      <p>
-                        {plan?.pricingSource === "kroger" &&
-                        !plan.simulationQuote
-                          ? "Checkout is on hold until every ingredient and the final all-in total are confirmed."
-                          : `Test the approved ${money(total)} weekly total in Stripe Checkout.`}
-                        <br />
-                        No money moves. This does not purchase groceries.
-                      </p>
-                      <div className="test-card">
-                        <CreditCard size={18} />
-                        <code>4242 4242 4242 4242</code>
-                        <small>Any future date · Any CVC</small>
-                      </div>
-                    </div>
-                    <div className="payment-action">
-                      <button
-                        className="primary"
-                        disabled={
-                          !!busy ||
-                          !plan ||
-                          plan.autoOrder === true ||
-                          plan.status !== "approved" ||
-                          !data?.integrations.stripe ||
-                          payments.some(
-                            (p) =>
-                              p.status === "paid" &&
-                              p.revision === plan?.revision,
-                          )
-                        }
-                        onClick={() =>
-                          plan &&
-                          act(
-                            "stripe/checkout",
-                            { planId: plan.id },
-                            "Opening Stripe test checkout",
-                          )
-                        }
-                      >
-                        <CreditCard size={16} />
-                        {payments.some(
-                          (p) =>
-                            p.status === "paid" &&
-                            p.revision === plan?.revision,
-                        )
-                          ? "Test payment confirmed"
-                          : plan?.autoOrder
-                            ? "Agent handles checkout"
-                            : "Try Stripe checkout"}
-                        <ArrowUpRight size={15} />
-                      </button>
-                      <small>
-                        {!data?.integrations.stripe
-                          ? "Add STRIPE_SECRET_KEY (sk_test_) to enable."
-                          : plan?.status !== "approved"
-                            ? "Approve a weekly plan first."
-                            : "Secure checkout hosted by Stripe."}
-                      </small>
-                      {payments.map((p) => (
-                        <div className="payment-status" key={p.id}>
-                          <span className={"status " + p.status}>
-                            {p.status}
-                          </span>
-                          {money(p.amountCents)}
-                          {p.status === "paid" && p.sessionId && (
-                            <a
-                              className="text-button"
-                              href={
-                                "/checkout/success?session_id=" +
-                                encodeURIComponent(p.sessionId)
-                              }
-                            >
-                              View receipt
-                            </a>
-                          )}
-                          {p.sessionId && (
-                            <button
-                              className="text-button"
-                              disabled={!!busy}
-                              onClick={() =>
-                                act("stripe/reconcile", {
-                                  sessionId: p.sessionId,
-                                })
-                              }
-                            >
-                              <RefreshCw size={12} />
-                              Check payment
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </section>
+                  {payments.length > 0 && <section className="panel"><h3>Test payments</h3>{payments.map(p => <div className="payment-status" key={p.id}><span className={"status " + p.status}>{p.status}</span>{money(p.amountCents)}{p.status === "paid" && p.sessionId && <Link className="text-button" href={"/checkout/success?session_id=" + encodeURIComponent(p.sessionId)}>View receipt</Link>}</div>)}</section>}
                   <p className="muted">
                     {data?.integrations.lastJobAt
                       ? "Last scheduled runner: " +

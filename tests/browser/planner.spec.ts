@@ -512,3 +512,25 @@ test("section URLs support direct loads, reloads and browser back navigation",as
   await page.goto('/deliveries/00000000-0000-0000-0000-000000000000');
   await expect(page.getByText('This page could not be found.',{exact:true})).toBeVisible();
 });
+
+test('pricing summary separates missing ingredients and removes legacy checkout controls', async ({page, request}) => {
+  const state=await(await request.get('/api/state')).json();
+  const plan=makePlan(recipes,defaults,'2030-04-01');
+  plan.retailBasket={environment:'production',fetchedAt:'2026-10-18T07:50:59Z',storeName:'Quality Food Center - Canyon Park',storeId:'test',subtotalCents:300,finalTotalCents:null,unresolved:1,batches:[{batchId:plan.batches[0].id,subtotalCents:300,lines:[{name:'c. basmati rice',unit:'g',required:100,pantryUsed:0},{name:'tomatoes',description:'Whole peeled tomatoes',productId:'test',unit:'g',required:100,pantryUsed:0,packages:1,unitPriceCents:300,totalCents:300}]}]};
+  plan.simulationQuote={revision:plan.revision,totalCents:800,missingItems:[{name:'c. basmati rice',amountCents:500}],mockItemsCents:500,feeCents:0,taxCents:0};
+  state.plans=[plan];state.activePlanId=plan.id;state.agentRuns=[];
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  await page.goto('/groceries');
+  const summary=page.getByRole('region',{name:'Grocery pricing summary'});
+  await expect(summary).toContainText('1 item needs review');
+  await expect(page.locator('tbody')).not.toContainText('basmati rice');
+  await expect(page.locator('tbody')).toContainText('Whole peeled tomatoes');
+  await page.locator('.pricing-review summary').click();
+  await expect(page.locator('.pricing-review dt')).toHaveText('basmati rice');
+  await expect(page.locator('.pricing-review dd')).toContainText('$5.00');
+  await expect(summary).toContainText('These are not Kroger quotes.');
+  await page.setViewportSize({width:390,height:844});
+  expect(await summary.evaluate(el=>el.getBoundingClientRect().right<=innerWidth)).toBe(true);
+  await page.getByRole('link',{name:'Deliveries',exact:true}).click();
+  await expect(page.getByRole('button',{name:/Simulate orders|Try Stripe checkout|Check payment/})).toHaveCount(0);
+});
