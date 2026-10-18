@@ -154,7 +154,7 @@ test("completion waits for verified execution and opens the ordered week", async
 
 });
 
-test("planning displays skeleton menus and a toast until the proposal is ready", async ({
+test("planning streams action history then reveals validated dinners day by day", async ({
   page,
   request,
 }) => {
@@ -163,9 +163,10 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
   state.plans = [plan];
   state.activePlanId = plan.id;
   state.agentRuns = [
-    { id: "planning-loading", kind: "planning", status: "running", currentAction:"Looking for matching Kroger packages and prices", trace:[{at:"2026-10-18",tool:"search_recipes",summary:"internal",display:"Retrieved 3 published recipes with ingredients and cooking times."}] },
+    { id: "planning-loading", planId:plan.id, kind: "planning", status: "running", currentAction:"Looking for matching Kroger packages and prices", trace:[{at:"2026-10-18",tool:"search_recipes",summary:"internal",display:"Retrieved 3 published recipes with ingredients and cooking times."}] },
   ];
   let ready = false;
+  await page.route('**/api/agent/progress?*',route=>route.fulfill({json:state.agentRuns[0]}));
   await page.route("**/api/state", (route) => {
     state.agentRuns[0].status = ready ? "awaiting_approval" : "running";
     return route.fulfill({ json: state });
@@ -174,9 +175,8 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
   await expect(
     page.getByRole("heading", { name: "Finding your next favorite dinners…" }),
   ).toBeVisible();
-  await expect(page.locator(".skeleton-card")).toHaveCount(
-    defaults.days.length,
-  );
+  await expect(page.locator(".skeleton-card")).toHaveCount(0);
+  await expect(page.locator(".meal-card")).toHaveCount(0);
   await expect(page.getByRole("region",{name:"Agent progress"})).toContainText("Looking for matching Kroger packages and prices");
   await expect(page.getByRole("region",{name:"Agent progress"})).toContainText("Retrieved 3 published recipes");
   await expect(page.locator(".kitchen-toast")).toHaveCount(0);
@@ -187,17 +187,21 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  const card = page.locator(".skeleton-card").first();
-  const bounds = await card.boundingBox();
-  await page.waitForTimeout(350);
-  expect(await card.boundingBox()).toEqual(bounds);
-  await page.emulateMedia({reducedMotion:"reduce"});
-  expect(await card.evaluate(el => el.getAnimations({subtree:true}).filter(a => a.playState === "running").length)).toBe(0);
-  await page.emulateMedia({reducedMotion:"no-preference"});
+  state.agentRuns[0].activity=[{at:'one',label:'Searching for Italian recipes',status:'done'},{at:'two',label:'Fetching recipe ingredients',status:'done'},{at:'three',label:'Matching ingredients to products on Kroger',status:'running'}];
+  await expect(page.getByRole('log')).toContainText('Searching for Italian recipes');
+  await expect(page.getByRole('log')).toContainText('Fetching recipe ingredients');
+  await expect(page.getByRole('log')).toContainText('Matching ingredients to products on Kroger');
+  await page.emulateMedia({reducedMotion:'reduce'});
+  expect(await page.locator('.agent-progress-live').evaluate(el=>el.getAnimations({subtree:true}).filter(a=>a.playState==='running').length)).toBe(0);
+  await page.emulateMedia({reducedMotion:'no-preference'});
   ready = true;
-  await expect(page.locator(".skeleton-card")).toHaveCount(0, {
-    timeout: 10000,
-  });
+  state.agentRuns[0].activity.push({at:'final',label:'Compiling your dinner plan',status:'done'});
+  await expect(page.getByRole('log')).toContainText('Compiling your dinner plan');
+  await expect(page.locator('.meal-card')).toHaveCount(0);
+  await expect(page.locator('.meal-card').first()).toBeVisible({timeout:10000});
+  expect(await page.locator('.meal-card').count()).toBeLessThan(defaults.days.length);
+  await expect(page.locator('.meal-card')).toHaveCount(defaults.days.length);
+  await expect(page.getByText('How your agent built this plan',{exact:true})).toBeVisible();
   await expect(page.locator(".kitchen-toast")).toContainText(
     "Your week is ready to review",
   );
@@ -503,7 +507,7 @@ test("a newly failed search shows one dismissible toast without a persistent ban
   let failed=false;
   await page.route('**/api/state',route=>route.fulfill({json:{...state,agentRuns:[{id:'new-failure',kind:'planning',status:failed?'failed':'running',error:failed?'The basket exceeds your budget. No order was placed.':undefined}]}}));
   await page.goto('/');
-  await expect(page.locator('.skeleton-card').first()).toBeVisible();
+  await expect(page.locator('.agent-progress-live')).toBeVisible();
   failed=true;
   const toast=page.locator('.search-error-toast');
   await expect(toast).toContainText('The basket exceeds your budget.',{timeout:10000});
@@ -569,7 +573,7 @@ test('dinner planning leaves other sections usable and fills groceries without r
   state.plans=[plan];state.activePlanId=plan.id;
   let ready=false;
   await page.route('**/api/state',route=>route.fulfill({json:{...state,agentRuns:[{id:'background-planning',kind:'planning',status:ready?'awaiting_approval':'running'}]}}));
-  await page.goto('/');await expect(page.locator('.skeleton-card').first()).toBeVisible();
+  await page.goto('/');await expect(page.locator('.agent-progress-live')).toBeVisible();
   await page.getByRole('link',{name:'Grocery list',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Your grocery list is on its way.'})).toBeVisible();
   await expect(page.locator('.skeleton-card')).toHaveCount(0);

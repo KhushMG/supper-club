@@ -11,7 +11,7 @@ import { US_TIMEZONES } from "@/lib/timezones";
 import { RecipeImage } from "./recipe-image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -169,12 +169,13 @@ export default function Dashboard() {
       history.replaceState({}, "", "/");
     }
   }, [refresh, act]);
+  const [reveal, setReveal] = useState<{id:string;count:number}>();
   const observedPlanning = useRef<string | undefined>(undefined);
   const runningAgent = data?.agentRuns?.find((r) => r.status === "running");
   const findingDinners =
     busy === "Finding your dinners" || runningAgent?.kind === "planning";
   const placingOrder = !!pendingOrder || runningAgent?.kind === "execution";
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (runningAgent?.kind === "planning") {
       observedPlanning.current = runningAgent.id;
       setSearchError("");
@@ -190,10 +191,38 @@ export default function Dashboard() {
       observedPlanning.current = undefined;
     }
     if (finished) {
+      if (finished.planId) setReveal({id:finished.planId,count:0});
       setNotice("Dinner is served (almost)! Your week is ready to review.");
       observedPlanning.current = undefined;
     }
   }, [data, runningAgent]);
+  useEffect(() => {
+    if (!reveal) return;
+    const count = data?.plans.find(p=>p.id===reveal.id)?.meals.length || 0;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timer = setTimeout(()=>setReveal(previous=>!previous ? previous : previous.count < count ? {...previous,count:reduced?count:previous.count+1} : undefined),reveal.count===0?1200:reveal.count<count?450:1500);
+    return ()=>clearTimeout(timer);
+  },[reveal,data?.plans]);
+  useEffect(() => {
+    if (!runningAgent) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      try {
+        const response=await fetch('/api/agent/progress?runId='+encodeURIComponent(runningAgent!.id),{cache:'no-store',signal:controller.signal});
+        if(response.ok) {
+          const latest=await response.json();
+          if(!controller.signal.aborted) {
+            if(latest.status !== 'running') await refresh();
+            else setData(old=>old?{...old,agentRuns:old.agentRuns?.map(r=>r.id===latest.id?latest:r)}:old);
+          }
+        }
+      } catch { /* Full-state polling remains the fallback. */ }
+      if(!controller.signal.aborted) timer=setTimeout(poll,1000);
+    }
+    poll();
+    return ()=>{controller.abort();clearTimeout(timer);};
+  },[runningAgent?.id,refresh]);
   useEffect(() => {
     if (!searchError) return;
     const timer = setTimeout(() => setSearchError(""), 8000);
@@ -620,10 +649,10 @@ export default function Dashboard() {
               {busy.includes("/") ? "Updating your kitchen…" : busy + "…"}
             </div>
           )}
-          {(findingDinners && tab === "week") || placingOrder ? (
+          {((findingDinners || reveal?.count === 0) && tab === "week") || placingOrder ? (
             <section
               className="kitchen-loading"
-              aria-busy="true"
+              aria-busy={!!findingDinners || !!placingOrder}
               aria-label={
                 placingOrder
                   ? "Processing your approved order"
@@ -636,36 +665,17 @@ export default function Dashboard() {
                     ? "Aprons off. We’ve got this."
                     : findingDinners
                       ? "Finding your next favorite dinners…"
-                      : "Setting the table…"}
+                      : "Your dinner plan is ready."}
                 </h2>
                 <p>
                   {placingOrder
                     ? "Confirming payment and scheduling your deliveries. Demo mode: no real charge or grocery delivery."
-                    : "Searching recipes, gathering ingredients, and making it all fit your budget."}
+                    : findingDinners ? "Follow along as your agent puts dinner together." : "Recipes checked. Your menu is ready."}
                 </p>
-                <small>
-                  This can take a minute. We’ll let you know when it’s ready.
-                </small>
+                {(findingDinners || placingOrder) && <small>Updates appear as each step happens.</small>}
               </div>
-              <AgentProgress run={runningAgent} />
-              {!placingOrder && (
-                <div className="meal-grid skeleton-menu" aria-hidden="true">
-                  {Array.from(
-                    { length: preferences.days.length || 5 },
-                    (_, i) => (
-                      <div className="skeleton-card" key={i}>
-                        <div className="skeleton skeleton-day" />
-                        <div className="skeleton skeleton-photo" />
-                        <div className="skeleton-copy">
-                          <div className="skeleton skeleton-title" />
-                          <div className="skeleton skeleton-line" />
-                          <div className="skeleton skeleton-meta" />
-                        </div>
-                      </div>
-                    ),
-                  )}
-                </div>
-              )}
+              <AgentProgress run={runningAgent || data?.agentRuns?.find(r=>r.planId===reveal?.id && r.kind==="planning")} />
+
             </section>
           ) : findingDinners && tab === "groceries" ? (
             <section className="panel grocery-pending" role="status">
@@ -748,11 +758,11 @@ export default function Dashboard() {
                       <div className="meal-grid">
                         {!plan && <p>Choose your cuisines to find dinners for your week.</p>}
                         {(
-                          plan?.meals ?? []
+                          plan?.meals.slice(0,reveal?.id === plan.id ? reveal.count : undefined) ?? []
                         ).map(({ day, recipe }, i) => (
                           <article
                             className={
-                              "meal-card " + (i === 0 ? "featured" : "")
+                              "meal-card " + (i === 0 ? "featured " : "") + (reveal?.id === plan?.id ? "meal-arriving" : "")
                             }
                             key={day}
                           >

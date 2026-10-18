@@ -326,6 +326,12 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
   const saved=await getRun(run.id);
   assert.equal(saved?.status,"awaiting_approval");
   assert.equal(saved?.budgetResearchAttempts,21);
+  assert.ok(saved?.activity?.some(a=>a.label.startsWith('Searching for Italian')));
+  assert.ok(saved?.activity?.some(a=>a.label.startsWith('Fetching ingredients')));
+  assert.ok(saved?.activity?.some(a=>a.label==='Checking package quantities and your weekly budget'));
+  assert.equal(saved?.activity?.at(-1)?.label,'Compiling your dinner plan');
+  assert.ok(saved?.activity?.every(a=>a.status!=='running'));
+  assert.equal(saved?.currentAction,undefined);
   assert.equal(modelCalls,2,"A valid basket saves without paying for another planning turn");
   assert.equal(saved?.preferences.budgetCents,10000);
   const plan=(await readState()).plans.find(p=>p.id===saved?.planId)!;

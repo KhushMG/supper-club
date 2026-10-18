@@ -1,5 +1,6 @@
 import { advanceFulfillment, startDeliveryDemo, cancelSimulatedOrder, nextDeliveryStage } from "@/lib/simulated-provider";
 import { startPlanning, startExecution, driveAgent } from "@/lib/ai-agent";
+import { publicRun } from "@/lib/agent-types";
 import { listRuns, getRun } from "@/lib/agent-runs";
 import { usageSummary } from "@/lib/agent-store";
 import { runOrderAgent } from "@/lib/order-agent";
@@ -113,6 +114,11 @@ async function handle(req: Request) {
       return response;
     }
     if (!authorized(req)) return json({ error: "Please sign in." }, 401);
+    if (req.method === "GET" && path === "agent/progress") {
+      const runId = id.parse(new URL(req.url).searchParams.get("runId"));
+      const run = await getRun(runId);
+      return run ? json(publicRun(run)) : json({error:"Run not found"},404);
+    }
     if (req.method === "GET" && path === "state") {
       await mutate(s => { for (const p of s.plans) advanceFulfillment(p); });
       const s = await readState();

@@ -21,6 +21,13 @@ import { cacheKey, cached, cachePut } from "./agent-store";
 import { allRuns, getRun, saveRun, claimRun, releaseRun } from "./agent-runs";
 import type { AgentRun } from "./agent-types";
 import type { Preferences, Recipe, Plan } from "./types";
+async function recordAction(run: AgentRun, label: string) {
+  const previous = run.activity?.at(-1);
+  if (previous?.status === "running") previous.status = "done";
+  (run.activity ??= []).push({at:new Date().toISOString(),label,status:"running"});
+  run.currentAction = label;
+  await saveRun(run);
+}
 const string = { type: "string" };
 const planningTools: AgentTool[] = [
   tool(
@@ -315,6 +322,7 @@ export async function agentTool(
       run.recentMeals,
       run.unavailablePublishers,
     );
+    await recordAction(run, `Fetching ingredients and cooking times from ${links.recipes.length} recipe pages`);
     const fetched = await Promise.allSettled(
       links.recipes.map((r) => sourceRecipe(r.url, r.cuisine)),
     );
@@ -493,6 +501,7 @@ export async function agentTool(
       Object.assign(found, product);
       delete found.error;
     }
+    await recordAction(run, "Checking package quantities and your weekly budget");
     await pricePlan(plan, prices);
     if (plan.pricingError)
       throw new Error(
@@ -592,11 +601,15 @@ export async function agentTool(
 export async function saveReadyProposal(run: AgentRun) {
   if (run.kind !== "planning" || !run.candidate)
     throw new Error("No planning proposal to recover.");
+  await recordAction(run, "Compiling your dinner plan");
   await agentTool(run, "save_proposal", {
     summary: `Your selected dinners take at most 60 minutes each. The weekly simulation total is $${(run.candidate.totalCents / 100).toFixed(2)}, including simulated delivery and tax. All ingredients have retailer prices. Review the meals and basket before approving the order.`,
   });
   delete run.error;
   delete run.pending;
+  delete run.currentAction;
+  const finalStep = run.activity?.at(-1);
+  if (finalStep) { finalStep.status = "done"; finalStep.detail = "Your dinners are ready. Every ingredient is priced and the total fits your budget."; }
   run.trace.push({
     at: new Date().toISOString(),
     tool: "save_proposal",
@@ -647,8 +660,7 @@ export async function driveAgent(id: string) {
         let failed = false;
         let args: Record<string, unknown> = {};
         try { args = JSON.parse(call.arguments || "{}"); } catch { /* Tool validation below reports malformed arguments. */ }
-        run.currentAction = actionLabel(call.name || "", args || {});
-        await saveRun(run);
+        await recordAction(run, actionLabel(call.name || "", args || {}));
         try {
           result = await agentTool(
             run,
@@ -676,6 +688,8 @@ export async function driveAgent(id: string) {
               ? `Basket total $${(details.totalCents / 100).toFixed(2)}`
               : `${call.name} completed`,
         });
+        const activity = run.activity?.at(-1);
+        if (activity) { activity.status = failed ? "error" : "done"; activity.detail = actionResult(call.name || "", run, result, failed); }
         delete run.currentAction;
         run.input.push({
           type: "function_call_output",
@@ -711,6 +725,8 @@ export async function driveAgent(id: string) {
           /* An invalid, stale or over-budget basket must still stop. */
         }
       }
+      const interrupted = run.activity?.at(-1);
+      if (interrupted?.status === "running") interrupted.status = "error";
       delete run.currentAction;
       run.status = "failed";
       run.error = message;

@@ -14,11 +14,11 @@ export function repeatedDinners(recipes: Recipe[]) {
 
 export function actionLabel(tool: string, args: Record<string, unknown> = {}) {
   switch (tool) {
-    case 'search_recipes': return `Searching ${typeof args.cuisine === 'string' ? args.cuisine.slice(0,60) + ' ' : ''}recipes that fit your preferences`;
+    case 'search_recipes': return `Searching for ${typeof args.cuisine === 'string' ? args.cuisine.slice(0,60) + ' ' : ''}recipes`;
     case 'fetch_recipe': return 'Reading the published recipe and its ingredients';
-    case 'search_products': return 'Looking for matching Kroger packages and prices';
-    case 'build_basket': return 'Pricing whole packages and checking your weekly budget';
-    case 'save_proposal': return 'Saving your dinners and grocery basket for review';
+    case 'search_products': return 'Matching ingredients to products on Kroger';
+    case 'build_basket': return 'Matching your recipe ingredients to Kroger products';
+    case 'save_proposal': return 'Compiling your dinner plan';
     case 'inspect_approved_plan': return 'Checking the exact plan you approved';
     case 'submit_test_order': return 'Processing payment and placing your order in demo mode';
     case 'get_order_status': return 'Verifying the saved payment and delivery status';
