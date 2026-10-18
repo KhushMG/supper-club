@@ -534,3 +534,47 @@ test('pricing summary separates missing ingredients and removes legacy checkout 
   await page.getByRole('link',{name:'Deliveries',exact:true}).click();
   await expect(page.getByRole('button',{name:/Simulate orders|Try Stripe checkout|Check payment/})).toHaveCount(0);
 });
+
+test('dinner planning leaves other sections usable and fills groceries without redirecting', async ({page,request})=>{
+  const state=await(await request.get('/api/state')).json();
+  const plan=makePlan(recipes,defaults,'2030-04-01');
+  state.plans=[plan];state.activePlanId=plan.id;
+  let ready=false;
+  await page.route('**/api/state',route=>route.fulfill({json:{...state,agentRuns:[{id:'background-planning',kind:'planning',status:ready?'awaiting_approval':'running'}]}}));
+  await page.goto('/');await expect(page.locator('.skeleton-card').first()).toBeVisible();
+  await page.getByRole('link',{name:'Grocery list',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Your grocery list is on its way.'})).toBeVisible();
+  await expect(page.locator('.skeleton-card')).toHaveCount(0);
+  await expect(page.locator('.pricing-summary')).toHaveCount(0);
+  await page.reload();await expect(page.locator('.grocery-pending')).toBeVisible();
+  await page.getByRole('link',{name:'Deliveries',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Delivery schedule'})).toBeVisible();
+  await expect(page.locator('.kitchen-loading')).toHaveCount(0);
+  await page.getByRole('link',{name:'Activity',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Kitchen journal'})).toBeVisible();
+  await page.getByRole('link',{name:'Grocery list',exact:true}).click();
+  await expect(page.locator('.grocery-pending')).toBeVisible();ready=true;
+  await expect(page.locator('.grocery-pending')).toHaveCount(0,{timeout:10000});
+  await expect(page.getByRole('heading',{name:'Your shopping list'})).toBeVisible();
+  await expect(page).toHaveURL(/\/groceries$/);
+  await expect(page.locator('.kitchen-toast')).toContainText('Your week is ready to review');
+});
+
+test('switching sections while the planning request starts preserves pending state', async ({page,request})=>{
+  const state=await(await request.get('/api/state')).json();
+  state.preferences={...defaults};state.agentRuns=[];state.integrations.ai=true;
+  let release!:()=>void;
+  const pending=new Promise<void>(resolve=>{release=resolve;});
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  await page.route('**/api/plans/generate',async route=>{
+    await pending;state.agentRuns=[{id:'starting-run',kind:'planning',status:'running'}];
+    await route.fulfill({json:{ok:true}});
+  });
+  await page.goto('/');
+  await page.getByRole('button',{name:/Find (my|new) dinners/}).click();
+  await page.getByRole('link',{name:'Grocery list',exact:true}).click();
+  await expect(page.locator('.grocery-pending')).toBeVisible();release();
+  await expect(page.getByRole('button',{name:'Finding dinners…'})).toBeVisible();
+  await expect(page).toHaveURL(/\/groceries$/);
+  await expect(page.locator('.grocery-pending')).toBeVisible();
+});

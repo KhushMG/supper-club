@@ -143,3 +143,44 @@ test("nonfood categories and scented products cannot supply ingredient prices", 
     249,
   );
 });
+
+test('recipe quantities and preparation notes resolve to purchasable groceries', () => {
+  for (const [ingredient, description] of [
+    ['14-oz can whole peeled tomatoes', 'Whole Peeled Tomatoes'],
+    ['c. basmati rice', 'Basmati Rice'],
+    ['lemon wedges', 'Lemons'],
+    ['peeled fresh ginger', 'Ginger Root'],
+    ['serrano chile', 'Serrano Peppers'],
+    ['warmed naan', 'Original Naan Bread'],
+    ['pinch red pepper flakes', 'Crushed Red Pepper'],
+    ['to serve bread', 'White Bread'],
+  ]) assert.equal(parseProduct({data:[product(description)]}, ingredient)?.regularCents,249,ingredient);
+});
+
+test('explicit cheese alternatives match either choice instead of requiring both', () => {
+  for(const description of ['Sharp Cheddar Cheese','American Cheese'])
+    assert.ok(parseProduct({data:[product(description)]},'cheddar or american cheese'));
+  for(const description of ['Parmesan Cheese','Pecorino Romano Cheese'])
+    assert.ok(parseProduct({data:[product(description)]},'grated parmigiano reggiano or pecorino romano cheese'));
+  assert.equal(parseProduct({data:[product('Mozzarella Cheese')]},'cheddar or american cheese'),undefined);
+  assert.deepEqual(retrievalQueries('cheddar or american cheese'),['cheddar cheese','american cheese']);
+});
+
+test('normalization preserves food form and rejects unsuitable fresh ginger substitutes', () => {
+  assert.equal(retrievalQueries('ground beef')[0],'ground beef');
+  assert.equal(parseProduct({data:[product('Beef Steak')]},'ground beef'),undefined);
+  assert.ok(parseProduct({data:[product('Ground Beef')]},'ground beef'));
+  for(const name of ['Ground Ginger','Ginger Tea','Ginger Juice','Crystallized Ginger'])
+    assert.equal(parseProduct({data:[product(name)]},'peeled fresh ginger'),undefined);
+  assert.equal(parseProduct({data:[product('Jalapeno Peppers')]},'serrano chile'),undefined);
+});
+
+test('an explicitly allowed second ingredient is retrieved at the selected store', async () => {
+  const terms:string[]=[];
+  const match=await retrieveIngredient('cheddar or american cheese','store',async(path,params)=>{
+    assert.equal(params['filter.locationId'],'store');terms.push(params['filter.term']);
+    return {data:params['filter.term']==='american cheese'?[product('American Cheese')]:[]};
+  });
+  assert.deepEqual(terms,['cheddar cheese','american cheese']);
+  assert.equal(match.regularCents,249);
+});

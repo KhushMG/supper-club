@@ -352,7 +352,6 @@ export default function Dashboard() {
       )
     ) {
       setSettings(false);
-      setTab("week");
       setNotice(
         data?.integrations.ai
           ? ""
@@ -494,6 +493,11 @@ export default function Dashboard() {
             <Link
               key={id}
               href={routes[id]}
+              onNavigate={(event) => {
+                // Preserve the pending request and polling state across kitchen tabs.
+                event.preventDefault();
+                setTab(id);
+              }}
               aria-current={tab === id ? "page" : undefined}
               className={tab === id ? "active" : ""}
             >
@@ -589,7 +593,7 @@ export default function Dashboard() {
               {busy.includes("/") ? "Updating your kitchen…" : busy + "…"}
             </div>
           )}
-          {findingDinners || placingOrder ? (
+          {(findingDinners && tab === "week") || placingOrder ? (
             <section
               className="kitchen-loading"
               aria-busy="true"
@@ -635,8 +639,16 @@ export default function Dashboard() {
                 </div>
               )}
             </section>
+          ) : findingDinners && tab === "groceries" ? (
+            <section className="panel grocery-pending" role="status">
+              <ShoppingBasket size={28} aria-hidden="true" />
+              <h2>Your grocery list is on its way.</h2>
+              <p>We’ll build your shopping list and check Kroger prices once your dinner recipes are fetched. You can explore the other pages while we work.</p>
+              <Link className="text-button" href="/">View dinner search <ArrowUpRight size={16} /></Link>
+            </section>
           ) : (
             <>
+              {findingDinners && <p className="alert neutral" role="status">Your new dinner plan is being prepared in the background. You’re viewing your saved week.</p>}
               <section className="overview">
                 <div className="overview-title">
                   <span className="icon-circle">

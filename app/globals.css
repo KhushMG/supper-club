@@ -1961,3 +1961,6 @@ textarea {
 .pricing-review dt::first-letter { text-transform: uppercase; }
 .pricing-review dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .pricing-review dd small { display: block; color: #5e6a58; font-size: 12px; margin-top: 4px; }
+.grocery-pending { padding: 32px; max-width: 760px; }
+.grocery-pending > svg { color: #627653; margin-bottom: 8px; }
+.grocery-pending p { line-height: 1.7; margin: 12px 0 20px; }

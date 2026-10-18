@@ -45,21 +45,34 @@ const item = z.object({
 export function normalizeIngredient(search: string) {
   return search
     .toLowerCase()
+    .trim()
     .replace(/\([^)]*\)/g, " ")
     .replace(/\s+\d+\.\d+\)?$/, "")
+    .replace(/^\d+(?:\.\d+)?[ -]*(?:oz|ounce|lb|pound)s?\.?\s+(?:cans?|jars?|packages?)\s+/i, "")
+    .replace(/^(?:(?:c\.|cups?|pinch|to serve|for serving|peeled|warmed|grated|shredded|sliced)\s+)+/, "")
     .replace(
-      /^(?:(?:can|cans|fresh|freshly|chopped|minced|ground|cracked)\s+)+/,
+      /^(?:(?:can|cans|fresh|freshly|chopped|minced|cracked)\s+)+/,
       "",
     )
     .replace(/\s+hot or mild$/, "")
+    .replace(/\s+(?:wedges|slices)$/, "")
     .replace(/garbanzo beans?/g, "chickpeas")
+    .replace(/parmigiano[ -]reggiano/g, "parmesan")
+    .replace(/\bserrano (?:chiles?|chill?i(?:es)?)\b/g, "serrano pepper")
     .replace(/red pepper flakes/g, "crushed red pepper")
     .replace(/fettucine/g, "fettuccine")
     .replace(/\s+/g, " ")
     .trim();
 }
-export function retrievalQueries(search: string) {
+function ingredientOptions(search: string) {
   const term = normalizeIngredient(search);
+  // Only accept alternatives explicitly offered by the recipe. Share the noun
+  // in “cheddar or American cheese” without requiring both cheeses in a blend.
+  return term.split(/\s+or\s+/).map(option =>
+    /\bcheese$/.test(term) && !/\bcheese$/.test(option) ? option + " cheese" : option,
+  );
+}
+export function retrievalQueries(search: string) {
   const aliases: Record<string, string[]> = {
     chickpeas: ["garbanzo beans"],
     "crushed red pepper": ["red pepper flakes"],
@@ -73,32 +86,36 @@ export function retrievalQueries(search: string) {
     "black pepper": ["ground black pepper"],
     salt: ["table salt"],
     ginger: ["ginger root"],
+    "serrano pepper": ["serrano"],
+    "whole peeled tomatoes": ["whole tomatoes"],
+    "parmesan cheese": ["parmigiano reggiano"],
+    "pecorino romano cheese": ["pecorino romano"],
+    naan: ["naan bread"],
     parmesan: ["parmesan cheese"],
   };
-  return [...new Set([term, ...(aliases[term] || [])])];
+  return [...new Set(ingredientOptions(search).flatMap(term => [term, ...(aliases[term] || [])]))];
 }
 function matchingProducts(data: unknown, search?: string) {
   const products = z.object({ data: z.array(item) }).parse(data).data;
   if (!search) return products;
-  const normalized = normalizeIngredient(search);
-  const tokens = normalized
-    .replace(/[^a-z0-9 ]/g, " ")
-    .split(/\s+/)
-    .filter(
-      (t) =>
-        t &&
-        ![
-          "and",
-          "with",
-          "dried",
-          "chopped",
-          "diced",
-          "canned",
-          "pasta",
-        ].includes(t),
-    );
-  return products
-    .filter((p) => {
+  const options = ingredientOptions(search);
+  return products.filter(p => options.some(normalized => {
+      const tokens = normalized
+        .replace(/[^a-z0-9 ]/g, " ")
+        .split(/\s+/)
+        .filter(
+          (t) =>
+            t &&
+            ![
+              "and",
+              "with",
+              "dried",
+              "chopped",
+              "diced",
+              "canned",
+              "pasta",
+            ].includes(t),
+        );
       if (
         p.categories?.some((c) =>
           /kitchen|household|cleaning|personal care|pet|hardware|home decor|floral|beauty/i.test(
@@ -156,12 +173,15 @@ function matchingProducts(data: unknown, search?: string) {
       if (
         forms.some(
           (f) =>
-            words.includes(f) && !tokens.some((t) => t.replace(/s$/, "") === f),
+            words.includes(f) && !tokens.some((t) => t.replace(/s$/, "") === f) &&
+            !(f === "bread" && tokens.includes("naan")),
         )
       )
         return false;
+      if (tokens.length === 0) return false;
+      if (normalized === "ginger" && words.some(w => ["ground", "powder", "tea", "juice", "crystallized", "pickled"].includes(w))) return false;
       return tokens.every((t) => words.includes(t.replace(/s$/, "")));
-    })
+    }))
     .sort((a, b) => a.description.length - b.description.length);
 }
 export function parseProduct(data: unknown, search?: string) {
@@ -389,7 +409,7 @@ export async function livePrices(
     ...new Set(plan.batches.flatMap((b) => b.groceries.map((g) => g.name))),
   ];
   const key =
-    "kroger-v2:" +
+    "kroger-v3:" +
     cacheKey({
       environment: krogerEnvironment(),
       zip: plan.preferences.zip,

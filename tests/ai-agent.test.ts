@@ -353,7 +353,7 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
   const cheaper = {...expensive,id:"cheaper",title:"Quick beans",ingredients:["100 g beans"],source:"https://food.example/cheap-beans"};
   run.catalog=[expensive];
   for (const [name,cents] of [["rice",10000],["beans",100]] as const) {
-    await cachePut("kroger-v2:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
+    await cachePut("kroger-v3:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
       provider:"Kroger",environment:"production",storeId:"fixture",storeName:"Fixture",fetchedAt:new Date().toISOString(),
       items:[{ingredient:name,productId:name,description:name,size:"16 oz",regularCents:cents}],
     },60000);
