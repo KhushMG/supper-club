@@ -12,8 +12,11 @@ export function NumberField({value,onValueChange,...props}:Props) {
     lastValue.current=value;
   },[value]);
   return <input {...props} type="number" value={draft} onChange={event=>{
-    setDraft(event.target.value);
-    const next=event.target.value===""?(props.required?NaN:0):Number(event.target.value);
+    // Keep an empty editing state and decimal fractions, but never carry an
+    // existing zero into the next whole number (e.g. 0 + 200 becomes 200).
+    const text = event.target.value.replace(/^(-?)0+(?=\d)/, "$1");
+    setDraft(text);
+    const next=text===""?(props.required?NaN:0):Number(text);
     lastValue.current=next;
     onValueChange(next);
   }}/>;

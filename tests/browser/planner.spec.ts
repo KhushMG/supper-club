@@ -431,3 +431,30 @@ test("recipe popup cleans publisher punctuation and remains readable on mobile",
     await expect(dialog).toHaveCount(0);
   }
 });
+
+
+test("numeric fields allow backspacing and do not prefix typed amounts with zero", async ({page})=>{
+  await page.goto('/');
+  await page.getByRole('button',{name:'Edit preferences',exact:true}).click();
+  const budget=page.getByLabel('Weekly budget · all in ($)');
+  await budget.fill('0');
+  await budget.press('End');
+  await budget.pressSequentially('200');
+  await expect(budget).toHaveValue('200');
+  await budget.press('Backspace'); await budget.press('Backspace'); await budget.press('Backspace');
+  await expect(budget).toHaveValue('');
+  await budget.pressSequentially('200');
+  await expect(budget).toHaveValue('200');
+  await budget.fill('00200'); await expect(budget).toHaveValue('200');
+  await budget.fill(''); await budget.pressSequentially('0.25');
+  await expect(budget).toHaveValue('0.25');
+  const people=page.getByLabel('People at the table');
+  await people.fill('0'); await people.press('End'); await people.pressSequentially('2');
+  await expect(people).toHaveValue('2');
+  await page.getByText('A few more preferences',{exact:true}).click();
+  const tip=page.getByLabel('Tip per delivery ($)');
+  await tip.fill('0'); await tip.press('End'); await tip.pressSequentially('5');
+  await expect(tip).toHaveValue('5');
+  await tip.press('Backspace'); await expect(tip).toHaveValue('');
+  await tip.press('Tab'); await expect(tip).toHaveValue('');
+});
