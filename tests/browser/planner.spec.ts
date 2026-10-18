@@ -10,13 +10,13 @@ test("plan, swap, incomplete Kroger pricing holds purchases, responsive layout",
   await page.getByLabel("Weekly budget · all in ($)").fill("500");
   await page.getByRole("button", { name: "Build my dinner plan" }).click();
   await expect(
-    page.getByRole("button", { name: "Awaiting final quote" }),
+    page.getByRole("region", { name: "Weekly approvals" }).getByRole("button", { name: "Approve order", exact: false }),
   ).toBeVisible({ timeout: 60000 });
   await page.getByRole("button", { name: "Swap Monday dinner" }).click();
   await page.locator(".swap-list button").first().click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Awaiting final quote" }),
+    page.getByRole("region", { name: "Weekly approvals" }).getByRole("button", { name: "Approve order", exact: false }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Grocery list", exact: true }).click();
   await expect(

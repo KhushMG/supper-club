@@ -277,6 +277,13 @@ export default function Dashboard() {
             <span className="approval-step">2</span> Approve order
           </button>
           <small>{runningAgent?.kind === "planning" ? "Waiting for the agent’s proposal" : plan?.status === "approved" ? "Order approved · agent handles execution" : plan?.simulationQuote ? `Authorize the ${money(plan.totalCents)} test order` : "Available when your proposal is ready"}</small>
+          {plan?.status === "approved" && (
+            <button className="text-button" disabled={!!busy} onClick={() => planAction("plans/pause")}>
+              <Pause size={15} /> Pause ordering
+            </button>
+          )}
+          {plan?.agentError && <small className="error">{plan.agentError}</small>}
+          {plan && plan.totalCents > plan.preferences.budgetCents && <small className="error">Over budget. Adjust the plan before approving.</small>}
           <button className="text-button" onClick={() => setSettings(true)}>Change preferences</button>
         </section>
         <p className="nav-label">YOUR KITCHEN</p>
@@ -634,95 +641,6 @@ export default function Dashboard() {
                         budget={selected.budgetCents}
                         spent={spent}
                       />
-                      <div className="approval-card">
-                        <span className="icon-circle">
-                          <ChefHat size={21} />
-                        </span>
-                        <h3>
-                          {plan?.status === "approved"
-                            ? "Your week is approved."
-                            : "Make this week yours."}
-                        </h3>
-                        <p>
-                          {plan?.status === "approved"
-                            ? "The agent handles test payment and scheduled simulated orders. You can pause before submission."
-                            : "Swap anything that doesn’t sound like you. Nothing gets ordered until you approve."}
-                        </p>
-                        {!plan ? (
-                          <button
-                            className="primary"
-                            onClick={() => setSettings(true)}
-                          >
-                            Plan my week
-                            <ArrowRight size={16} />
-                          </button>
-                        ) : plan.status === "approved" ? (
-                          <button
-                            className="secondary full"
-                            disabled={!!busy}
-                            onClick={() => planAction("plans/pause")}
-                          >
-                            <Pause size={15} />
-                            Pause ordering
-                          </button>
-                        ) : (
-                          <button
-                            className="primary"
-                            disabled={
-                              !!busy ||
-                              plan.status === "infeasible" ||
-                              (plan.pricingSource === "kroger" &&
-                                !plan.simulationQuote)
-                            }
-                            onClick={() => planAction("plans/approve")}
-                          >
-                            <Check size={17} />
-                            {plan.pricingSource === "kroger" &&
-                            !plan.simulationQuote
-                              ? "Awaiting final quote"
-                              : "Approve order & let agent execute"}
-                          </button>
-                        )}
-                        {plan?.retailBasket && !plan.simulationQuote && (
-                          <button
-                            className="secondary"
-                            disabled={!!busy}
-                            onClick={() => planAction("sandbox/quote")}
-                          >
-                            Prepare test checkout
-                          </button>
-                        )}
-                        {plan?.simulationQuote && (
-                          <p>
-                            SIMULATION:{" "}
-                            {money(plan.simulationQuote.mockItemsCents)} mock
-                            ingredients + {money(plan.simulationQuote.feeCents)}{" "}
-                            delivery + {money(plan.simulationQuote.taxCents)}{" "}
-                            tax. No real purchase.
-                          </p>
-                        )}
-                        {plan?.status === "approved" && !plan.autoOrder && (
-                          <button
-                            className="secondary"
-                            disabled={!!busy}
-                            onClick={() => planAction("plans/automate")}
-                          >
-                            Let agent handle checkout & orders
-                          </button>
-                        )}
-                        {plan?.autoOrder && (
-                          <p>
-                            {plan.agentError ||
-                              (plan.agentPaidRevision === plan.revision
-                                ? "Agent: payment confirmed. Orders scheduled automatically."
-                                : "Agent: confirming test payment. Unpaid orders stay on hold.")}
-                          </p>
-                        )}
-                        {plan?.aiSummary && <p>{plan.aiSummary}</p>}
-                        <small>
-                          {plan?.issue ?? "You’re always in control."}
-                        </small>
-                      </div>
                       <div className="delivery-note">
                         <Truck size={21} />
                         <div>

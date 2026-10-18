@@ -678,41 +678,6 @@ nav button:hover {
   color: #8e997e;
   margin-top: 16px;
 }
-.approval-card {
-  padding: 24px 20px;
-  border: 1px solid #e2e4da;
-  border-radius: 8px;
-  background: #fff;
-  margin-top: 17px;
-}
-.approval-card > .icon-circle {
-  width: 35px;
-  height: 35px;
-  background: #f4f1e5;
-  color: #a3976c;
-}
-.approval-card h3 {
-  font-family: "Libre Caslon Display", Georgia, serif;
-  font-size: 1.5rem;
-  font-weight: 400;
-  margin-top: 12px;
-}
-.approval-card p {
-  font-size: 0.8125rem;
-  color: #95998c;
-  line-height: 1.8;
-  margin: 9px 0 19px;
-}
-.approval-card .primary {
-  width: 100%;
-  font-size: 0.875rem;
-}
-.approval-card > small {
-  display: block;
-  text-align: center;
-  font-size: 0.8125rem;
-  margin-top: 10px;
-}
 .delivery-note {
   display: flex;
   gap: 12px;
@@ -1510,9 +1475,6 @@ details small {
     display: grid;
     grid-template-columns: 1fr;
     gap: 15px;
-  }
-  .approval-card {
-    margin: 0;
   }
   .delivery-note {
     padding: 6px;
