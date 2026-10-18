@@ -1,4 +1,5 @@
 "use client";
+import { RecipeImage } from "./recipe-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -277,6 +278,10 @@ export default function Dashboard() {
       .reduce((s, b) => s + b.totalCents, 0) ?? 0;
   const ingredients = plan?.batches.flatMap((b) => b.groceries) ?? [];
   async function generate() {
+    if (!preferences.cuisines.length) {
+      setSettings(true);
+      return;
+    }
     let pantry: Preferences["pantry"];
     try {
       pantry = pantryText.trim()
@@ -541,6 +546,12 @@ export default function Dashboard() {
                 The latest dinner search didn’t finish. The meals below are your
                 previously saved plan. Your cuisine choices are still selected;
                 try finding dinners again.
+                {data.agentRuns[0].error && (
+                  <details>
+                    <summary>Why this plan wasn’t saved</summary>
+                    <p>{data.agentRuns[0].error}</p>
+                  </details>
+                )}
               </div>
             )}
           {error && (
@@ -676,13 +687,9 @@ export default function Dashboard() {
                   <div className="planner-layout">
                     <div>
                       <div className="meal-grid">
+                        {!plan && <p>Choose your cuisines to find dinners for your week.</p>}
                         {(
-                          plan?.meals ??
-                          data?.recipes
-                            .filter((r) => compatible(r, defaults))
-                            .slice(0, 6)
-                            .map((recipe, day) => ({ recipe, day })) ??
-                          []
+                          plan?.meals ?? []
                         ).map(({ day, recipe }, i) => (
                           <article
                             className={
@@ -695,9 +702,8 @@ export default function Dashboard() {
                               onClick={() => setDetail(recipe)}
                               aria-label={"View " + recipe.title}
                             >
-                              <img
+                              <RecipeImage
                                 src={recipe.image}
-                                alt={recipe.title}
                                 loading={i === 0 ? "eager" : "lazy"}
                               />
                               <span className="day-label">
@@ -1672,10 +1678,9 @@ export default function Dashboard() {
             >
               <X size={20} />
             </button>
-            <img
+            <RecipeImage
               className="recipe-cover"
               src={detail.image}
-              alt={detail.title}
             />
             <div className="recipe-content">
               <p className="eyebrow">
@@ -1755,7 +1760,7 @@ export default function Dashboard() {
                         setSwap(undefined);
                     }}
                   >
-                    <img src={r.image} alt="" />
+                    <RecipeImage src={r.image} />
                     <span>
                       <b>{r.title}</b>
                       <small>

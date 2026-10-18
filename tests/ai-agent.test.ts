@@ -16,7 +16,8 @@ import {
   reserveCall,
   usageSummary,
 } from "../lib/agent-store";
-import { defaults, makePlan, approve } from "../lib/domain";
+import { makePlan, approve } from "../lib/domain";
+import { defaults } from "./preferences";
 import { recipes } from "../lib/recipes";
 import { prepareSimulation } from "../lib/simulation";
 import { readState, database, mutate } from "../lib/db";
@@ -342,6 +343,48 @@ test("a within-budget test proposal with missing retailer matches saves with moc
   assert.equal(saved.status, "draft");
   assert.equal(saved.approvedRevision, undefined);
   await saveRun(run);
+});
+test("over-budget basket forces new recipe research, then reprices and saves without raising the cap", async () => {
+  const preferences = {...defaults,cuisines:["Italian"],budgetCents:10000};
+  const run = await startPlanning(preferences, "keep budget fixed");
+  const expensive = {...recipes[0],id:"expensive",cuisine:"Italian",servings:2,minutes:30,ingredients:["100 g rice"]};
+  const cheaper = {...expensive,id:"cheaper",title:"Quick beans",ingredients:["100 g beans"],source:"https://food.example/cheap-beans"};
+  run.catalog=[expensive];
+  for (const [name,cents] of [["rice",10000],["beans",100]] as const) {
+    await cachePut("kroger-v2:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
+      provider:"Kroger",environment:"production",storeId:"fixture",storeName:"Fixture",fetchedAt:new Date().toISOString(),
+      items:[{ingredient:name,productId:name,description:name,size:"16 oz",regularCents:cents}],
+    },60000);
+  }
+  const meals=(recipeId:string)=>preferences.days.map(day=>({day,recipeId}));
+  await agentTool(run,"build_basket",{meals:meals(expensive.id),selections:[]});
+  assert.ok(run.candidate!.totalCents>preferences.budgetCents);
+  assert.equal(run.budgetResearchRequired,true);
+  await assert.rejects(()=>agentTool(run,"report_blocker",{reason:"Raise budget"}),/Research a cheaper dinner/);
+  await assert.rejects(()=>agentTool(run,"build_basket",{meals:meals(expensive.id),selections:[]}),/Search for a different/);
+  await cachePut("recipe-v2:"+cacheKey({url:cheaper.source,cuisine:"Italian"}),cheaper,60000);
+  run.calls=7;
+  await saveRun(run);
+  const original=globalThis.fetch;
+  let modelCalls=0;
+  globalThis.fetch=async (_url,init)=>{
+    const body=JSON.parse(String(init?.body));
+    if(body.tools[0].type==="web_search") return Response.json({output:[{type:"message",content:[{text:JSON.stringify({recipes:[{url:cheaper.source,cuisine:"Italian"}]})}]}]});
+    modelCalls++;
+    if(modelCalls===1) assert.deepEqual(body.tools.map((t:{name:string})=>t.name),["search_recipes"]);
+    const name=modelCalls===1?"search_recipes":modelCalls===2?"build_basket":"save_proposal";
+    const args=modelCalls===1?{cuisine:"Italian",query:"quick beans"}:modelCalls===2?{meals:meals(cheaper.id),selections:[]}:{summary:"New cheaper dinners fit the unchanged budget."};
+    return Response.json({output:[{type:"function_call",call_id:"budget-"+modelCalls,name,arguments:JSON.stringify(args)}]});
+  };
+  try { await driveAgent(run.id); } finally {globalThis.fetch=original;}
+  const saved=await getRun(run.id);
+  assert.equal(saved?.status,"awaiting_approval");
+  assert.equal(saved?.budgetResearchAttempts,1);
+  assert.equal(saved?.preferences.budgetCents,10000);
+  const plan=(await readState()).plans.find(p=>p.id===saved?.planId)!;
+  assert.ok(plan.totalCents<=10000);
+  assert.ok(plan.meals.every(m=>m.recipe.id==="cheaper"));
+  assert.equal(plan.approvedRevision,undefined);
 });
 test("server cache expires and requests can exceed 20 per day while enforcing the lifetime cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);

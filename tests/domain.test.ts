@@ -1,19 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  defaults,
-  ingredient,
-  purchaseIngredient,
-  makePlan,
-  approve,
-  quote,
-  processDue,
-  pause,
-  sandboxBasket,
-  nextMonday,
-  compatible,
-  preferenceSchema,
-} from "../lib/domain";
+import { ingredient, purchaseIngredient, makePlan, approve, quote, processDue, pause, sandboxBasket, nextMonday, compatible, preferenceSchema } from "../lib/domain";
+import { defaults } from "./preferences";
 import { recipes } from "../lib/recipes";
 const prefs = () => ({ ...structuredClone(defaults), budgetCents: 50000 });
 const draft = () => makePlan(recipes, prefs(), "2030-04-01");

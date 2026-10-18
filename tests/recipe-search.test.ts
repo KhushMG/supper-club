@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { searchRecipeWeb } from "../lib/recipe-search";
-import { defaults } from "../lib/domain";
+import { defaults } from "./preferences";
 import { publicIPv4 } from "../lib/recipe-page";
 process.env.TURSO_DATABASE_URL =
   "file:" + join(tmpdir(), "recipe-search-" + crypto.randomUUID() + ".db");
@@ -22,6 +22,8 @@ test("web discovery is query-driven, cached by feedback, and bounded", async () 
     assert.equal(body.input, "dinner recipe");
     assert.doesNotMatch(body.input, /Preferences|recentMeals|[{}]/);
     assert.match(body.instructions, /noodles/);
+    assert.match(body.instructions, /weeklyBudgetCents/);
+    assert.match(body.instructions, /shared staples/);
     return Response.json({
       output: [
         {

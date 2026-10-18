@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCheckout } from "../lib/stripe";
 import { mutate, readState, database } from "../lib/db";
-import { makePlan, defaults, approve } from "../lib/domain";
+import { makePlan, approve } from "../lib/domain";
+import { defaults } from "./preferences";
 import { recipes } from "../lib/recipes";
 process.env.TURSO_DATABASE_URL =
   "file:" + join(tmpdir(), "supper-checkout-" + crypto.randomUUID() + ".db");

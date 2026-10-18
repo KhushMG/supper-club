@@ -1,4 +1,5 @@
-import { defaults, makePlan } from "../../lib/domain";
+import { makePlan } from "../../lib/domain";
+import { defaults } from "../preferences";
 import { readFileSync } from "node:fs";
 const recipes = JSON.parse(
   readFileSync(new URL("../../data/recipes.json", import.meta.url), "utf8"),
@@ -12,6 +13,7 @@ test("plan, swap, incomplete Kroger pricing holds purchases, responsive layout",
     page.getByRole("heading", { name: "A good week starts at the table." }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Edit preferences" }).click();
+  for (const cuisine of defaults.cuisines) await page.getByRole("button", {name:cuisine,exact:true}).click();
   await page.getByLabel("Weekly budget · all in ($)").fill("500");
   await page.getByRole("button", { name: "Build my dinner plan" }).click();
   await expect(
@@ -243,4 +245,62 @@ test("cuisine choices survive refresh and stay on one row", async ({
       ),
     ).toBe(true);
   }
+});
+
+test("new households have no preselected cuisines or sample meals", async ({page,request}) => {
+  const state = await (await request.get('/api/state')).json();
+  state.preferences = {...defaults,cuisines:[]};
+  state.plans=[]; state.activePlanId=undefined; state.agentRuns=[];
+  await page.route('**/api/state', route=>route.fulfill({json:state}));
+  let generationRequests=0;
+  await page.route('**/api/plans/generate', route=>{generationRequests++;return route.fulfill({json:{}});});
+  await page.goto('/');
+  await expect(page.locator('.meal-card')).toHaveCount(0);
+  await page.getByRole('button',{name:/Find my dinners/}).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  for(const cuisine of ['Italian','Mexican','Indian','Japanese']) {
+    await expect(page.getByRole('button',{name:cuisine,exact:true})).toHaveAttribute('aria-pressed','false');
+  }
+  await expect(page.getByRole('button',{name:'Build my dinner plan',exact:true})).toBeDisabled();
+  expect(generationRequests).toBe(0);
+});
+
+test("missing photos and non-image responses show a fallback in cards and recipe details", async ({page,request}) => {
+  const state=await (await request.get('/api/state')).json();
+  const plan=makePlan(recipes,defaults,'2030-04-01');
+  plan.meals=plan.meals.map((m,i)=>({...m,recipe:{...m.recipe,image:i===0?'A description of a bowl of curry':'https://photos.example/description'}}));
+  state.plans=[plan];state.activePlanId=plan.id;state.agentRuns=[];
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  await page.route('https://photos.example/**',route=>route.fulfill({status:200,contentType:'text/html',body:'A description instead of an image'}));
+  await page.goto('/');
+  await expect(page.locator('.image-button').first()).toBeVisible();
+  for(const card of await page.locator('.image-button').all()) await card.scrollIntoViewIfNeeded();
+  await expect(page.locator('.image-button .recipe-photo-fallback')).toHaveCount(plan.meals.length);
+  await expect(page.locator('.image-button img')).toHaveCount(0);
+  await page.locator('.image-button').first().click();
+  await expect(page.locator('.recipe-modal .recipe-photo-fallback')).toBeVisible();
+  await expect(page.locator('.recipe-modal img')).toHaveCount(0);
+  await page.getByRole('button',{name:'Close recipe',exact:true}).click();
+  // A new plan with a valid photo must not inherit the old failure state.
+  const image='https://photos.example/valid.svg';
+  await page.route(image,route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="green"/></svg>'}));
+  plan.meals[0].recipe.image=image;
+  await page.getByRole('button',{name:'Refresh plan',exact:true}).click();
+  await expect(page.locator('.image-button img').first()).toBeVisible();
+  await expect.poll(()=>page.locator('.image-button img').first().evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(0);
+});
+
+test("failed planning explains its budget blocker while preserving the user's cuisines", async ({page,request}) => {
+  const state=await (await request.get('/api/state')).json();
+  const plan=makePlan(recipes,defaults,'2030-04-01');
+  state.preferences={...defaults,cuisines:['Japanese','Thai']};
+  state.plans=[plan];state.activePlanId=plan.id;
+  state.agentRuns=[{id:'over-budget',kind:'planning',status:'failed',error:'The replacement basket still exceeds your $275 budget. No order was placed.'}];
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  await page.goto('/');
+  await page.getByText('Why this plan wasn’t saved',{exact:true}).click();
+  await expect(page.locator('details').getByText(state.agentRuns[0].error,{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Edit preferences',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Japanese',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(page.getByRole('button',{name:'Italian',exact:true})).toHaveAttribute('aria-pressed','false');
 });

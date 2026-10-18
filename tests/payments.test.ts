@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { acceptPayment, testStripe } from "../lib/stripe";
-import { defaults } from "../lib/domain";
+import { defaults } from "./preferences";
 import type { State } from "../lib/types";
 function fixture() {
   const state: State = {

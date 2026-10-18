@@ -8,7 +8,8 @@ import {
   priceRetailBatches,
 } from "../lib/kroger-basket";
 import { parseProduct } from "../lib/grocery-prices";
-import { makePlan, defaults, approve, processDue } from "../lib/domain";
+import { makePlan, approve, processDue } from "../lib/domain";
+import { defaults } from "./preferences";
 import { recipes } from "../lib/recipes";
 test("container weights count every can and preserve needed units", () => {
   const x = retailIngredient("2 15oz. cans black beans");

@@ -71,7 +71,7 @@ export const preferenceSchema = z.object({
   recurring: z.boolean(),
 });
 export const defaults: Preferences = {
-  cuisines: ["Italian", "Mexican", "Indian"],
+  cuisines: [],
   servings: 2,
   days: [0, 1, 2, 3, 4, 5, 6],
   budgetCents: 20000,

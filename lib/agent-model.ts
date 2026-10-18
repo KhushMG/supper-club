@@ -67,10 +67,13 @@ export function compactInput(input: unknown[]): unknown[] {
       if (!data) return value;
       if (Array.isArray(data.recipes))
         data.recipes = data.recipes.map((r: Record<string, unknown>) => ({
-          ...r,
+          id: r.id,
+          title: r.title,
+          cuisine: r.cuisine,
+          minutes: r.minutes,
           ingredients:
             index === latestRecipes && Array.isArray(r.ingredients)
-              ? r.ingredients.slice(0, 8)
+              ? r.ingredients.slice(0, 4)
               : undefined,
         }));
       delete data.availableRecipes;
@@ -95,7 +98,7 @@ export function compactInput(input: unknown[]): unknown[] {
             unique.set(p.ingredient, {
               ...p,
               alternatives: p.alternatives
-                ?.slice(0, 3)
+                ?.slice(0, 2)
                 .map((a: Record<string, unknown>) => ({
                   productId: a.productId,
                   size: a.size,

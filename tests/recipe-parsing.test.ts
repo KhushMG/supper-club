@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseRecipePage, durationMinutes } from "../lib/recipes";
-import { ingredient, purchaseIngredient, recipeCompatibilityIssue, defaults } from "../lib/domain";
+import { ingredient, purchaseIngredient, recipeCompatibilityIssue } from "../lib/domain";
+import { defaults } from "./preferences";
 const recipe = {
   "@type": "Recipe",
   name: "Rice &amp; beans",

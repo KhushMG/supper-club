@@ -20,6 +20,8 @@ export type AgentRun = {
   unavailablePublishers?: string[];
   offers?: LivePrices;
   candidate?: Plan;
+  budgetResearchRequired?: boolean;
+  budgetResearchAttempts?: number;
   planId?: string;
   revision?: number;
   error?: string;

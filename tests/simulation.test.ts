@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {makePlan, defaults, approve, processDue} from '../lib/domain';
+import { makePlan, approve, processDue } from '../lib/domain';
+import { defaults } from "./preferences";
 import {recipes} from '../lib/recipes';
 import {prepareSimulation, validSimulation} from '../lib/simulation';
 function fixture() {
