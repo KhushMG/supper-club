@@ -5,6 +5,7 @@ import {
   packageMeasure,
   matchRetailLine,
   retailRequirements,
+  priceRetailBatches,
 } from "../lib/kroger-basket";
 import { parseProduct } from "../lib/grocery-prices";
 import { makePlan, defaults, approve, processDue } from "../lib/domain";
@@ -35,7 +36,7 @@ test("retail packages round up using actual size and price", () => {
   assert.equal(line.packages, 2);
   assert.equal(line.totalCents, 498);
 });
-test("missing prices and incompatible volume/weight never invent item totals", () => {
+test("missing prices stay unresolved; incompatible units buy a whole package", () => {
   const line = { name: "rice", unit: "ml", required: 240, pantryUsed: 0 };
   assert.equal(matchRetailLine(line).totalCents, undefined);
   const r = matchRetailLine(line, {
@@ -44,8 +45,10 @@ test("missing prices and incompatible volume/weight never invent item totals", (
     regularCents: 249,
   });
   assert.equal(r.unitPriceCents, 249);
-  assert.equal(r.totalCents, undefined);
-  assert.ok(r.issue);
+  assert.equal(r.totalCents, 249);
+  assert.equal(r.packages, 1);
+  assert.ok(r.quantityNote);
+  assert.equal(r.issue, undefined);
   assert.equal(packageMeasure("about 1 lb"), undefined);
   assert.equal(packageMeasure("2 x 16 oz"), undefined);
   assert.deepEqual(packageMeasure("12 ct"), { unit: "each", quantity: 12 });
@@ -128,3 +131,16 @@ test("ingredient matching does not substitute prepared foods with similar names"
     undefined,
   );
 });
+
+ test("whole packages are shared across deliveries and exact shortfalls buy more", () => {
+  const batches = [0,1,2].map(i => ({batchId: String(i), subtotalCents: 0, lines: [
+    {name: "salt", unit: "ml", required: 5, pantryUsed: 0},
+    {name: "rice", unit: "g", required: 200, pantryUsed: 0},
+  ]}));
+  const result = priceRetailBatches(batches, [
+    {ingredient: "salt", productId: "salt", size: "500 g", regularCents: 100},
+    {ingredient: "rice", productId: "rice", size: "500 g", regularCents: 200},
+  ]);
+  assert.deepEqual(result.map(b => b.lines.map(l => l.packages)), [[1,1],[0,0],[0,1]]);
+  assert.equal(result.reduce((sum,b)=>sum+b.subtotalCents,0),500);
+ });

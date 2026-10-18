@@ -13,6 +13,7 @@ export type RetailLine = {
   packages?: number;
   totalCents?: number;
   issue?: string;
+  quantityNote?: string;
 };
 export type RetailBasket = {
   environment: "production" | "certification";
@@ -141,28 +142,56 @@ export function matchRetailLine(
   if (!pack || pack.unit !== line.unit)
     return {
       ...result,
-      issue: "Package quantity needs review; no unit conversion assumed",
+      packages: 1,
+      totalCents: product.regularCents,
+      quantityNote: "One whole package assumed for the week; recipe units differ from the package.",
     };
   const packages = Math.ceil(line.required / pack.quantity - 1e-9);
   return { ...result, packages, totalCents: packages * product.regularCents };
+}
+// Track bought packages across deliveries so staples are not purchased per meal.
+export function priceRetailBatches(
+  batches: RetailBasket["batches"],
+  prices: LivePrices["items"],
+) {
+  const remaining = new Map<string, number>();
+  const assumed = new Set<string>();
+  for (const batch of batches) {
+    batch.lines = batch.lines.map((line) => {
+      const product = prices.find((p) => p.ingredient === line.name);
+      const result = matchRetailLine(line, product);
+      if (result.totalCents === undefined) return result;
+      const key = product?.productId || line.name;
+      const pack = packageMeasure(result.size || "");
+      if (!pack || pack.unit !== line.unit) {
+        if (assumed.has(key)) {
+          result.packages = 0;
+          result.totalCents = 0;
+          result.quantityNote = "Use the whole package bought earlier this week (quantity assumed).";
+        }
+        assumed.add(key);
+      } else {
+        const stockKey = key + "|" + pack.unit;
+        const stock = remaining.get(stockKey) || 0;
+        const needed = Math.max(0, line.required - stock);
+        result.packages = Math.max(0, Math.ceil(needed / pack.quantity - 1e-9));
+        result.totalCents = result.packages * result.unitPriceCents!;
+        remaining.set(stockKey, Math.max(0, stock + result.packages * pack.quantity - line.required));
+        if (stock > 0) result.quantityNote = "Includes leftovers from packages bought earlier this week.";
+        assumed.add(key);
+      }
+      return result;
+    });
+    batch.subtotalCents = batch.lines.reduce((sum, line) => sum + (line.totalCents ?? 0), 0);
+  }
+  return batches;
 }
 export async function buildRetailBasket(plan: Plan): Promise<RetailBasket> {
   const batches = retailRequirements(plan);
   const prices = await livePrices(plan, [
     ...new Set(batches.flatMap((b) => b.lines.map((l) => l.name))),
   ]);
-  for (const batch of batches) {
-    batch.lines = batch.lines.map((line) =>
-      matchRetailLine(
-        line,
-        prices.items.find((p) => p.ingredient === line.name),
-      ),
-    );
-    batch.subtotalCents = batch.lines.reduce(
-      (sum, line) => sum + (line.totalCents ?? 0),
-      0,
-    );
-  }
+  priceRetailBatches(batches, prices.items);
   return {
     environment: prices.environment || "production",
     fetchedAt: prices.fetchedAt,

@@ -705,6 +705,7 @@ export default function Dashboard() {
                                       {line.productId && (
                                         <small>Product {line.productId}</small>
                                       )}
+                                      {line.quantityNote && <small>{line.quantityNote}</small>}
                                       {line.issue && (
                                         <small className="error">
                                           {line.issue}
@@ -713,7 +714,7 @@ export default function Dashboard() {
                                     </td>
                                     <td>
                                       {line.packages !== undefined
-                                        ? `${line.packages} × ${line.size}`
+                                        ? line.packages === 0 ? "Already bought this week" : `${line.packages} × ${line.size || "whole package"}`
                                         : line.size
                                           ? `${line.size} · quantity needs review`
                                           : "Needs review"}
