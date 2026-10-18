@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Plan } from "./types";
 export type LivePrices = {
   provider: "Kroger";
+  environment?: "production" | "certification";
   storeId: string;
   storeName: string;
   fetchedAt: string;
@@ -49,6 +50,17 @@ export function parseProduct(data: unknown) {
       : undefined,
   };
 }
+export function krogerEnvironment() {
+  const environment = process.env.KROGER_ENVIRONMENT || "production";
+  if (environment !== "production" && environment !== "certification")
+    throw new Error("KROGER_ENVIRONMENT must be production or certification.");
+  return environment;
+}
+export function krogerBaseUrl() {
+  return krogerEnvironment() === "certification"
+    ? "https://api-ce.kroger.com/v1"
+    : "https://api.kroger.com/v1";
+}
 export async function livePrices(plan: Plan): Promise<LivePrices> {
   const clientId = process.env.KROGER_CLIENT_ID,
     secret = process.env.KROGER_CLIENT_SECRET;
@@ -56,7 +68,9 @@ export async function livePrices(plan: Plan): Promise<LivePrices> {
     throw new Error(
       "Configure KROGER_CLIENT_ID and KROGER_CLIENT_SECRET for live store price lookup.",
     );
-  const auth = await fetch("https://api.kroger.com/v1/connect/oauth2/token", {
+  const environment = krogerEnvironment();
+  const baseUrl = krogerBaseUrl();
+  const auth = await fetch(baseUrl + "/connect/oauth2/token", {
     method: "POST",
     headers: {
       Authorization:
@@ -79,7 +93,7 @@ export async function livePrices(plan: Plan): Promise<LivePrices> {
     .parse(await auth.json()).access_token;
   async function get(path: string, params: Record<string, string>) {
     const r = await fetch(
-      "https://api.kroger.com/v1/" + path + "?" + new URLSearchParams(params),
+      baseUrl + "/" + path + "?" + new URLSearchParams(params),
       {
         headers: { Authorization: "Bearer " + token },
         signal: AbortSignal.timeout(15000),
@@ -131,6 +145,7 @@ export async function livePrices(plan: Plan): Promise<LivePrices> {
   }
   return {
     provider: "Kroger",
+    environment,
     storeId: store.locationId,
     storeName: store.name,
     fetchedAt: new Date().toISOString(),

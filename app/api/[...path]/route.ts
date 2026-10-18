@@ -26,7 +26,7 @@ import {
   testStripe,
   acceptPayment,
 } from "@/lib/stripe";
-import { livePrices } from "@/lib/grocery-prices";
+import { livePrices, krogerEnvironment } from "@/lib/grocery-prices";
 import { runJobs } from "@/lib/jobs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,6 +114,7 @@ async function handle(req: Request) {
             process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? false,
           ai: !!process.env.OPENAI_API_KEY,
           liveGroceries: false,
+          krogerEnvironment: krogerEnvironment(),
           livePrices:
             !!process.env.KROGER_CLIENT_ID &&
             !!process.env.KROGER_CLIENT_SECRET,
@@ -304,7 +305,7 @@ async function handle(req: Request) {
         p.livePrices = prices;
         log(
           s,
-          "Kroger store prices retrieved. These are product candidates, not a final checkout quote.",
+          `Kroger ${prices.environment} prices retrieved. These are product candidates, not a final checkout quote.`,
         );
       });
       return json({ ok: true });

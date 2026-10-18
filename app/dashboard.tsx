@@ -40,6 +40,7 @@ type Data = State & {
     ai: boolean;
     liveGroceries: boolean;
     livePrices: boolean;
+    krogerEnvironment?: "production" | "certification";
     scheduler: boolean;
     lastJobAt?: string;
     localAccess: boolean;
@@ -622,12 +623,14 @@ export default function Dashboard() {
                         act(
                           "groceries/prices",
                           { planId: plan.id },
-                          "Checking real store prices",
+                          "Checking Kroger prices",
                         )
                       }
                     >
                       <RefreshCw size={14} />
-                      Check live prices
+                      {data?.integrations.krogerEnvironment === "certification"
+                        ? "Check test prices"
+                        : "Check live prices"}
                     </button>
                   </div>
                   {!plan ? (
@@ -682,14 +685,19 @@ export default function Dashboard() {
                   )}
                   <div className="alert neutral">
                     {data?.integrations.livePrices
-                      ? "Kroger lookup is available. Product candidates are separate from the sandbox budget and do not authorize purchases."
+                      ? data.integrations.krogerEnvironment === "certification"
+                        ? "Kroger certification is connected. Results are test data, not live store prices. They do not authorize purchases."
+                        : "Kroger lookup is available. Product candidates are separate from the sandbox budget and do not authorize purchases."
                       : "Add Kroger API credentials to check real store prices. The grocery plan currently uses clearly labeled synthetic package prices."}
                   </div>
                   {plan?.livePrices && (
                     <section className="panel">
                       <div className="panel-heading">
                         <h3>
-                          Live product prices · {plan.livePrices.storeName}
+                          {plan.livePrices.environment === "certification"
+                            ? "Certification test prices"
+                            : "Live product prices"}{" "}
+                          · {plan.livePrices.storeName}
                         </h3>
                         <small>
                           {new Date(plan.livePrices.fetchedAt).toLocaleString(

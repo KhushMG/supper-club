@@ -84,6 +84,8 @@ For broader browsing and free-text feedback, set `OPENAI_API_KEY` and optionally
 
 Create a Kroger developer application with Products API access and set `KROGER_CLIENT_ID` and `KROGER_CLIENT_SECRET` on the server. In **Grocery list**, click **Check live prices**. The adapter resolves a store near the household ZIP, queries the official Products API with its location ID, and displays timestamped product candidates, package labels, and regular prices. Missing prices are never invented. These read-only product results do not replace the all-in sandbox budget or authorize checkout; product matching, stock, fees, and final-charge bounds must be verified before live grocery purchasing.
 
+Set `KROGER_ENVIRONMENT=certification` for credentials issued for Certification APIs. This uses `api-ce.kroger.com` and labels results as test data. Production credentials require `KROGER_ENVIRONMENT=production` (the default). Certification credentials do not provide real store prices or enable checkout.
+
 Reference: [Kroger’s official public API collection](https://www.postman.com/kroger/the-kroger-co-s-public-workspace/documentation/ki6utqb/kroger-public-apis).
 
 ## What is deliberately gated
