@@ -1,6 +1,6 @@
 # Supper Club
 
-Cuisine preferences → actual published recipes → ingredient quantities → Kroger product matching and package prices → final-quote hold. Includes **Stripe test Checkout**, persistent household state, meal swaps, pantry quantities, delivery scheduling, and an activity log. No Edamam or paid recipe-data subscription.
+Cuisine preferences → actual published recipes → ingredient quantities → Kroger product matching and package prices → final-quote hold. Includes **Stripe test Checkout**, persistent household state, meal swaps, pantry quantities, delivery scheduling, and an activity log. 
 
 ## Current deployment
 
