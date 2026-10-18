@@ -76,7 +76,14 @@ export function compactInput(input: unknown[]): unknown[] {
               ? r.ingredients.slice(0, 4)
               : undefined,
         }));
-      delete data.availableRecipes;
+      if (index !== latestRecipes) {
+        delete data.availableRecipes;
+        if (Array.isArray(data.recipes)) {
+          delete data.skippedSources;
+          delete data.nextStep;
+          delete data.note;
+        }
+      }
       if (index !== latestProducts && Array.isArray(data.products)) {
         data.productCount = data.products.length;
         data.superseded =
@@ -96,7 +103,9 @@ export function compactInput(input: unknown[]): unknown[] {
                 : undefined;
           } else
             unique.set(p.ingredient, {
-              ...p,
+              ingredient: p.ingredient, productId: p.productId,
+              product: String(p.product || "").slice(0, 90),
+              packages: p.packages, cents: p.cents, issue: p.issue,
               alternatives: p.alternatives
                 ?.slice(0, 2)
                 .map((a: Record<string, unknown>) => ({

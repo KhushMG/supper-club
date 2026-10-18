@@ -31,7 +31,7 @@ test("plan, swap, incomplete Kroger pricing holds purchases, responsive layout",
       .getByRole("region", { name: "Weekly approvals" })
       .getByRole("button", { name: "Approve week & order", exact: false }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Grocery list", exact: true }).click();
+  await page.getByRole("link", { name: "Grocery list", exact: true }).click();
   await expect(
     page.getByText("Kroger pricing is unavailable.", { exact: false }),
   ).toBeVisible();
@@ -39,7 +39,7 @@ test("plan, swap, incomplete Kroger pricing holds purchases, responsive layout",
     page.getByRole("columnheader", { name: "Sandbox cost" }),
   ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "This week", exact: false })
+    .getByRole("link", { name: "This week", exact: false })
     .first()
     .click();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -64,6 +64,7 @@ test("completion waits for verified execution and opens the ordered week", async
   const state = await (await request.get("/api/state")).json();
   const plan = makePlan(recipes, defaults, "2030-04-01");
   state.plans = [plan];
+  plan.id = state.activePlanId;
   plan.aiRunId = "planner-test";
   plan.status = "draft";
   plan.agentError = undefined;
@@ -114,6 +115,7 @@ test("completion waits for verified execution and opens the ordered week", async
     page.getByText("AI agent activity", { exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Approve week & order" }).click();
+  await expect(page.getByText("ONE LESS THING ON YOUR PLATE", {exact:true})).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Aprons off. We’ve got this." }),
@@ -123,14 +125,14 @@ test("completion waits for verified execution and opens the ordered week", async
   await expect(
     page.getByRole("heading", { name: "Test checkout complete" }),
   ).toBeVisible({ timeout: 10000 });
-  await page
-    .getByRole("button", { name: "View this week’s deliveries" })
-    .click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  expect(selected).toBe(plan.id);
-  await expect(
-    page.getByRole("heading", { name: "A little planning. Right on time." }),
-  ).toBeVisible();
+  const deliveryLink=page.getByRole("link", { name: "View this week’s deliveries" });
+  await expect(deliveryLink).toHaveAttribute('href',`/deliveries/${plan.id}`);
+  await deliveryLink.click();
+  await expect(page).toHaveURL(new RegExp(`/deliveries/${plan.id}$`));
+  await expect(page.getByRole('heading',{name:/Week of/})).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(`Week reference: ${plan.id}`,{exact:true})).toBeVisible();
+
 });
 
 test("planning displays skeleton menus and a toast until the proposal is ready", async ({
@@ -438,6 +440,8 @@ test("numeric fields allow backspacing and do not prefix typed amounts with zero
   await page.goto('/');
   await page.getByRole('button',{name:'Edit preferences',exact:true}).click();
   const budget=page.getByLabel('Weekly budget · all in ($)');
+  await expect(budget).toHaveAttribute('type','text');
+  await expect(budget).toHaveAttribute('inputmode','decimal');
   await budget.fill('0');
   await budget.press('End');
   await budget.pressSequentially('200');
@@ -446,6 +450,9 @@ test("numeric fields allow backspacing and do not prefix typed amounts with zero
   await expect(budget).toHaveValue('');
   await budget.pressSequentially('200');
   await expect(budget).toHaveValue('200');
+  await budget.press('ArrowUp'); await expect(budget).toHaveValue('200');
+  await budget.fill('1001'); expect(await budget.evaluate((el:HTMLInputElement)=>el.checkValidity())).toBe(false);
+  await budget.fill('abc'); expect(await budget.evaluate((el:HTMLInputElement)=>el.checkValidity())).toBe(false);
   await budget.fill('00200'); await expect(budget).toHaveValue('200');
   await budget.fill(''); await budget.pressSequentially('0.25');
   await expect(budget).toHaveValue('0.25');
@@ -477,4 +484,31 @@ test("a newly failed search shows one dismissible toast without a persistent ban
   await expect(toast).toHaveCount(0);
   await page.reload(); await expect(page.locator('.image-button').first()).toBeVisible();
   await expect(toast).toHaveCount(0);
+});
+
+
+test("wider sidebar and themed scrollbars keep desktop and tablet layouts usable",async({page})=>{
+  for(const [width,sidebarWidth] of [[1440,280],[1100,250],[800,230]]) {
+    await page.setViewportSize({width,height:800}); await page.goto('/');
+    await expect(page.locator('.sidebar')).toBeVisible();
+    expect(await page.locator('.sidebar').evaluate(el=>el.getBoundingClientRect().width)).toBe(sidebarWidth);
+    expect(await page.locator('.main').evaluate(el=>el.getBoundingClientRect().left)).toBe(sidebarWidth);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    expect(await page.locator('.sidebar').evaluate(el=>getComputedStyle(el).scrollbarColor)).not.toBe('auto');
+  }
+});
+
+
+test("section URLs support direct loads, reloads and browser back navigation",async({page,request})=>{
+  await page.goto('/');
+  await page.getByRole('link',{name:'Grocery list',exact:true}).click();
+  await expect(page).toHaveURL(/\/groceries$/);
+  await page.reload(); await expect(page.locator('nav a[aria-current="page"]')).toHaveText('Grocery list');
+  await page.getByRole('link',{name:'Deliveries',exact:true}).click(); await expect(page).toHaveURL(/\/deliveries$/);
+  const state=await(await request.get('/api/state')).json();
+  await expect(page.getByRole('link',{name:'Open this week’s delivery record'})).toHaveAttribute('href',`/deliveries/${state.activePlanId}`);
+  await page.getByRole('link',{name:'Activity',exact:true}).click();await expect(page).toHaveURL(/\/activity$/);
+  await page.goBack(); await expect(page).toHaveURL(/\/deliveries$/);
+  await page.goto('/deliveries/00000000-0000-0000-0000-000000000000');
+  await expect(page.getByText('This page could not be found.',{exact:true})).toBeVisible();
 });

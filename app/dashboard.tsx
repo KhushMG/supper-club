@@ -5,6 +5,8 @@ import { NumberField } from "./number-field";
 import { DIET_OPTIONS, CERTIFICATION_NOTE } from "@/lib/diets";
 import { US_TIMEZONES } from "@/lib/timezones";
 import { RecipeImage } from "./recipe-image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -71,8 +73,11 @@ const prettyDate = (s: string) =>
     day: "numeric",
   });
 export default function Dashboard() {
+  const pathname = usePathname();
+  const routes: Record<string,string> = {week:"/",groceries:"/groceries",deliveries:"/deliveries",activity:"/activity"};
+  const tab = Object.keys(routes).find(key => routes[key] === pathname) || "week";
+  const setTab = (value:string) => window.history.pushState(null,"",routes[value] || "/");
   const [data, setData] = useState<Data>(),
-    [tab, setTab] = useState("week"),
     [pageRefreshing, setPageRefreshing] = useState(false),
     [settings, setSettings] = useState(false),
     [pendingOrder, setPendingOrder] = useState<{
@@ -487,17 +492,18 @@ export default function Dashboard() {
             { id: "deliveries", label: "Deliveries", Icon: Truck },
             { id: "activity", label: "Activity", Icon: Clock3 },
           ].map(({ id, label, Icon }) => (
-            <button
+            <Link
               key={id}
+              href={routes[id]}
+              aria-current={tab === id ? "page" : undefined}
               className={tab === id ? "active" : ""}
-              onClick={() => setTab(id)}
             >
               <Icon size={19} />
               {label}
               {id === "week" && plan && (
                 <span className="nav-count">{plan.meals.length}</span>
               )}
-            </button>
+            </Link>
           ))}
         </nav>
         <button className="preference-link" onClick={() => setSettings(true)}>
@@ -595,9 +601,6 @@ export default function Dashboard() {
               }
             >
               <div className="loading-intro" role="status">
-                {placingOrder && (
-                  <p className="eyebrow">ONE LESS THING ON YOUR PLATE</p>
-                )}
                 <h2>
                   {placingOrder
                     ? "Aprons off. We’ve got this."
@@ -990,6 +993,7 @@ export default function Dashboard() {
                     <Empty onClick={() => setSettings(true)} />
                   ) : (
                     <div className="delivery-grid">
+                      <Link className="secondary delivery-record-link" href={`/deliveries/${plan.id}`}>Open this week’s delivery record <ArrowUpRight size={16}/></Link>
                       {plan.batches.map((b, i) => (
                         <section className="panel delivery-card" key={b.id}>
                           <div className="panel-heading">
@@ -1308,18 +1312,9 @@ export default function Dashboard() {
               scheduled your simulated deliveries.
             </p>
             <p>No real groceries were purchased.</p>
-            <button
-              className="primary full"
-              disabled={!!busy}
-              onClick={async () => {
-                if (await act("plans/select", { planId: orderComplete.id })) {
-                  setTab("deliveries");
-                  setOrderComplete(undefined);
-                }
-              }}
-            >
+            <Link className="primary full" href={`/deliveries/${orderComplete.id}`}>
               View this week’s deliveries <ArrowRight size={18} />
-            </button>
+            </Link>
           </section>
         </div>
       )}

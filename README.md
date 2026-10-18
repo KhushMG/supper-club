@@ -158,3 +158,7 @@ Create a Web application OAuth client in Google Cloud â†’ Google Auth Platform â
 Set server-only `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_ALLOWED_EMAILS` (comma-separated allowed household emails) in Vercel and redeploy. `APP_URL` must be `https://supper-club-umber.vercel.app`; keep the existing `AUTH_SECRET`. Until credentials are configured, household password login stays available.
 
 First-time Google identities complete a three-step preferences survey before the dashboard. Completion is persisted by Google account ID. Saving does not start AI research or ordering. The profile page displays Google-provided name/email and supports sign-out. This is still one private shared household: allowlisted members share preferences and plans, not separate tenant accounts.
+
+## Navigation and delivery records
+
+The kitchen sections have permanent routes: `/`, `/groceries`, `/deliveries`, and `/activity`. The order-completion dialog links to `/deliveries/<plan-id>`. That authenticated server-rendered page reads the saved week, delivery batches, grocery lines, payment status, and simulation order references from Turso; it does not depend on the currently selected week or browser storage. Unknown week IDs return 404. Status refreshes every 30 seconds while visible, and refresh never starts planning, pays, or submits an order. Fulfillment remains explicitly simulated.

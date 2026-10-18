@@ -72,6 +72,19 @@ const planningTools: AgentTool[] = [
     { reason: string },
   ),
 ];
+export function toolsForPlanning(run: AgentRun): AgentTool[] {
+  if (run.budgetResearchRequired) return planningTools.filter(t => t.name === "search_recipes");
+  return planningTools.filter(t => t.name !== "build_basket" || run.catalog.length > 0).map(t => {
+    if (t.name !== "build_basket") return t;
+    const bound = structuredClone(t);
+    const parameters = bound.parameters as {properties: {meals: {items: {properties: {recipeId: Record<string, unknown>}}}}};
+    parameters.properties.meals.items.properties.recipeId = {
+      type: "string", enum: run.catalog.map(r => r.id),
+      description: "Use an exact ID from the retrieved recipe catalog. Search results are already fetched; do not invent or shorten IDs.",
+    };
+    return bound;
+  });
+}
 const executionTools: AgentTool[] = [
   tool(
     "inspect_approved_plan",
@@ -437,9 +450,12 @@ export async function agentTool(
     const selected = meals.map((m) => {
       const recipe = run.catalog.find((r) => r.id === m.recipeId);
       if (!recipe)
-        throw new Error("Fetch this recipe first. Unknown recipe ID.");
+        throw new Error("Unknown recipe ID. Choose an exact retrieved ID from this catalog: " + JSON.stringify(run.catalog.map(r => ({id:r.id,title:r.title,cuisine:r.cuisine}))));
       return { day: m.day, recipe };
     });
+    const missingCuisines = run.preferences.cuisines.filter(c => !selected.some(m => m.recipe.cuisine === c));
+    if (run.preferences.days.length >= run.preferences.cuisines.length && missingCuisines.length)
+      throw new Error("Include every selected cuisine in the week. Missing: " + missingCuisines.join(", ") + ". Use the retrieved catalog IDs.");
     const plan = makePlan(
       run.catalog,
       run.preferences,
@@ -596,7 +612,7 @@ export async function driveAgent(id: string) {
         await saveRun(run);
         const { reply, cacheHit } = await callModel(
           run.input,
-          run.kind === "planning" ? (run.budgetResearchRequired ? planningTools.filter(t => t.name === "search_recipes") : planningTools) : executionTools,
+          run.kind === "planning" ? toolsForPlanning(run) : executionTools,
           system +
             (run.budgetResearchRequired ? ` Your last basket cost $${(run.candidate!.totalCents / 100).toFixed(2)} against the hard $${(run.preferences.budgetCents / 100).toFixed(2)} cap. You MUST search a different cheaper dinner now, in the same requested cuisines. Avoid the costly protein or specialty ingredients from the last basket.` : "") +
             ` Remaining tool turns including this one: ${planningTurnLimit(run) - run.calls + 1}. Reserve the final two planning turns for build_basket and save_proposal.`,

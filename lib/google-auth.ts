@@ -14,7 +14,7 @@ export function authOrigin() {
 export function safeReturnTo(value?: string | null) {
   if (!value?.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "/";
   const u = new URL(value, "https://local.example");
-  return ["/", "/profile", "/checkout/success"].includes(u.pathname) ? u.pathname + u.search : "/";
+  return (["/", "/profile", "/checkout/success", "/groceries", "/deliveries", "/activity"].includes(u.pathname) || /^\/deliveries\/[a-f0-9-]{36}$/.test(u.pathname)) ? u.pathname + u.search : "/";
 }
 export function beginGoogleSignIn(next?: string | null) {
   if (!googleConfigured()) throw new Error("Google sign-in is not configured");

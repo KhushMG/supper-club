@@ -7,6 +7,7 @@ import {
   startExecution,
   driveAgent,
   agentTool,
+  toolsForPlanning,
 } from "../lib/ai-agent";
 import { getRun, saveRun } from "../lib/agent-runs";
 import {
@@ -89,6 +90,7 @@ test("unknown recipe IDs, missing days, stale approval and over-budget proposals
       }),
     /Unknown recipe/,
   );
+  await assert.rejects(()=>agentTool(r,"build_basket",{meals:defaults.days.map(day=>({day,recipeId:recipes[0].id})),selections:[]}),/Include every selected cuisine/);
   const p = makePlan(recipes, defaults, "2030-04-01");
   p.totalCents = defaults.budgetCents + 1;
   p.simulationQuote = {
@@ -403,6 +405,17 @@ test("new searches stay on the upcoming week despite existing draft history", as
   const state=await readState();
   assert.equal(state.plans.find(p=>p.id===state.activePlanId)?.week,week);
   assert.ok(state.plans.some(p=>p.id===first.planId));
+});
+test("basket tool only permits retrieved recipe IDs and refreshes as the catalog grows",()=>{
+  const run = {catalog:[],budgetResearchRequired:false} as unknown as import("../lib/agent-types").AgentRun;
+  assert.ok(!toolsForPlanning(run).some(t=>t.name==="build_basket"));
+  run.catalog=[recipes[0]];
+  const schema=()=>toolsForPlanning(run).find(t=>t.name==="build_basket")!.parameters as any;
+  assert.deepEqual(schema().properties.meals.items.properties.recipeId.enum,[recipes[0].id]);
+  run.catalog.push(recipes[1]);
+  assert.deepEqual(schema().properties.meals.items.properties.recipeId.enum,[recipes[0].id,recipes[1].id]);
+  run.budgetResearchRequired=true;
+  assert.deepEqual(toolsForPlanning(run).map(t=>t.name),["search_recipes"]);
 });
 test("server cache expires and usage remains accurate beyond the former 200-call cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);

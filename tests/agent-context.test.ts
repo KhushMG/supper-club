@@ -74,3 +74,17 @@ test("long budget-research history leaves room for the tool schema and instructi
   assert.equal(JSON.parse((result[0] as any).output).recipes[0].id,"recipe-0-0");
   assert.equal(JSON.parse((result.at(-1) as any).output).products.length,50);
 });
+
+test("latest search retains the retrieved recipe ID catalog during compaction",()=>{
+  const catalog=[{id:'recipe-real-123',title:'Chana masala',cuisine:'Indian'}];
+  const compacted=compactInput([{type:'function_call_output',call_id:'a',output:JSON.stringify({recipes:catalog,availableRecipes:catalog})}]) as {output:string}[];
+  assert.deepEqual(JSON.parse(compacted[0].output).availableRecipes,catalog);
+});
+
+test("old publisher diagnostics do not crowd out the latest recipe catalog",()=>{
+  const history=Array.from({length:8},(_,i)=>({type:'function_call_output',call_id:String(i),output:JSON.stringify({recipes:[{id:String(i),title:'Dinner',cuisine:'Italian'}],availableRecipes:[{id:String(i)}],skippedSources:[{url:'https://publisher.example/'+('long-path/'.repeat(100)),reason:'A prior fetch failed'}],nextStep:'Build a basket',note:'Fetched recipe'})}));
+  const result=compactInput(history) as {output:string}[];
+  assert.equal(JSON.parse(result[0].output).skippedSources,undefined);
+  assert.ok(JSON.parse(result.at(-1)!.output).skippedSources);
+  assert.deepEqual(JSON.parse(result.at(-1)!.output).availableRecipes,[{id:'7'}]);
+});
