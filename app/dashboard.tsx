@@ -1,4 +1,5 @@
 "use client";
+import { initials, type Profile } from "@/lib/auth-profile";
 import { RecipeImage } from "./recipe-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -22,6 +23,7 @@ import {
   Sparkles,
   Truck,
   Utensils,
+  UserRound,
   Wallet,
   X,
 } from "lucide-react";
@@ -35,6 +37,7 @@ import {
 } from "@/lib/domain";
 import type { State, Recipe, Preferences, Plan } from "@/lib/types";
 type Data = State & {
+  profile?: Profile | null;
   agentRuns?: import("@/lib/agent-types").AgentRunSummary[];
   aiUsage?: {
     calls: number;
@@ -277,7 +280,8 @@ export default function Dashboard() {
       .filter((b) => ["submitted", "delivered"].includes(b.status))
       .reduce((s, b) => s + b.totalCents, 0) ?? 0;
   const ingredients = plan?.batches.flatMap((b) => b.groceries) ?? [];
-  async function generate() {
+  function generate() { return submitPreferences(true); }
+  async function submitPreferences(planDinners: boolean) {
     if (!preferences.cuisines.length) {
       setSettings(true);
       return;
@@ -305,6 +309,15 @@ export default function Dashboard() {
         : [];
     } catch (e) {
       setError((e as Error).message);
+      return;
+    }
+    if (!planDinners) {
+      if (await act("preferences", { ...preferences, pantry }, "Saving preferences")) {
+        setPreferences({ ...preferences, pantry });
+        setSettings(false);
+        setTab("week");
+        setNotice("Preferences saved. Find new dinners when you’re ready.");
+      }
       return;
     }
     setSettings(false);
@@ -361,12 +374,12 @@ export default function Dashboard() {
           </span>
           supper club<span className="brand-dot">.</span>
         </a>
-        <div className="household">
-          <span className="avatar">H</span>
+        <a className="household profile-link" href="/profile" aria-label="View your profile">
+          <span className="avatar">{data.profile ? initials(data.profile.name) : <UserRound size={18} />}</span>
           <div>
-            Your household<small>A little less to think about.</small>
+            {data.profile?.name || "Your profile"}<small>{data.profile?.email || "Account details"}</small>
           </div>
-        </div>
+        </a>
         <section className="sidebar-approvals" aria-label="Weekly approvals">
           <p className="nav-label">YOUR NEXT STEPS</p>
           <button
@@ -1327,7 +1340,7 @@ export default function Dashboard() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                generate();
+                submitPreferences(false);
               }}
             >
               <label>Cuisines you’re craving</label>
@@ -1620,9 +1633,7 @@ export default function Dashboard() {
                 </label>
               </details>
               <p className="muted">
-                Find my dinners starts recipe research and basket planning.
-                Review the meals and total, then select Approve week &amp; order
-                to approve the recipes and authorize execution together.
+                Save your preferences, then choose Find new dinners on the left to start recipe research. Review the meals and total before approving your order.
               </p>
               {error && (
                 <p className="error" role="alert">
@@ -1645,10 +1656,8 @@ export default function Dashboard() {
                   <Sparkles size={17} />
                 )}{" "}
                 {busy
-                  ? "Starting your agent…"
-                  : data?.integrations.ai
-                    ? "Find my dinners"
-                    : "Build my dinner plan"}
+                  ? "Saving preferences…"
+                  : "Save preferences"}
                 <ArrowRight size={17} />
               </button>
               <p className="form-footnote">
@@ -1815,7 +1824,7 @@ function Budget({
       </div>
       <div className="budget-number">
         {basket ? money(displayedTotal) : "Pending"}
-        <span> / {money(budget)} cap</span>
+        <span className="budget-cap"> / {money(budget)} cap</span>
       </div>
       <p className={displayedTotal > budget ? "error" : "budget-room"}>
         {displayedTotal > budget

@@ -95,6 +95,7 @@ export type Payment = {
   error?: string;
 };
 export type State = {
+  onboardedProfiles?: string[];
   preferences: Preferences;
   plans: Plan[];
   activePlanId?: string;

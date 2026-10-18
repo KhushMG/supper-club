@@ -1,0 +1,52 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {generateKeyPair, exportJWK, createLocalJWKSet, SignJWT} from "jose";
+import {beginGoogleSignIn,readGoogleFlow,safeReturnTo,verifyGoogleToken} from "../lib/google-auth";
+import {verify,sessionProfile,token,signAuthData} from "../lib/auth";
+process.env.AUTH_SECRET="test-secret-only-".repeat(4);
+process.env.APP_PASSWORD="test-password";
+process.env.APP_URL="https://supper.example";
+process.env.GOOGLE_CLIENT_ID="test-google-client";
+process.env.GOOGLE_CLIENT_SECRET="test-client-secret";
+process.env.GOOGLE_ALLOWED_EMAILS="member@example.com";
+test("Google sign-in uses state, nonce, PKCE and a safe return path",()=>{
+  const {url,cookie}=beginGoogleSignIn("/profile");
+  const u=new URL(url);
+  assert.equal(u.origin,"https://accounts.google.com");
+  assert.equal(u.searchParams.get("redirect_uri"),"https://supper.example/api/auth/google/callback");
+  assert.equal(u.searchParams.get("code_challenge_method"),"S256");
+  assert.equal(u.searchParams.get("scope"),"openid email profile");
+  assert.equal(u.searchParams.has("client_secret"),false);
+  assert.equal(readGoogleFlow(cookie,u.searchParams.get("state")).next,"/profile");
+  assert.throws(()=>readGoogleFlow(cookie,"wrong"));
+  assert.throws(()=>readGoogleFlow(cookie+"tampered",u.searchParams.get("state")));
+  assert.throws(()=>readGoogleFlow(signAuthData({purpose:"google-oauth",exp:Date.now()-1}),"state"));
+  assert.equal(verify(cookie),false);
+  for(const value of ["https://evil.example","//evil.example","/\\evil.example","/api/jobs"])assert.equal(safeReturnTo(value),"/");
+  assert.equal(safeReturnTo("/checkout/success?session_id=cs_test_example"),"/checkout/success?session_id=cs_test_example");
+});
+test("Google JWT signature, issuer, audience, nonce, expiry, verified email and household access are checked",async()=>{
+  const {publicKey,privateKey}=await generateKeyPair("RS256");
+  const jwk=await exportJWK(publicKey);jwk.kid="test";
+  const keys=createLocalJWKSet({keys:[jwk]});
+  const claims={sub:"google-user-123",name:"Alex Cook",email:"member@example.com",email_verified:true,nonce:"nonce"};
+  const sign=(extra:Record<string,unknown>={})=>new SignJWT({...claims,...extra}).setProtectedHeader({alg:"RS256",kid:"test"}).setIssuer("https://accounts.google.com").setAudience("test-google-client").setIssuedAt().setExpirationTime("5m").sign(privateKey);
+  const valid=await sign();
+  const profile=await verifyGoogleToken(valid,"nonce",keys);
+  assert.equal(profile.id,"google:google-user-123");
+  const session=token(profile);
+  assert.equal(verify(session),true);
+  assert.equal(sessionProfile(session)?.name,"Alex Cook");
+  await assert.rejects(()=>verifyGoogleToken(valid,"wrong",keys));
+  await assert.rejects(()=>verifyGoogleToken(valid+"x","nonce",keys));
+  await assert.rejects(()=>verifyGoogleToken(awaitableDummy,"nonce",keys));
+  for(const extra of [{email_verified:false},{email:"stranger@example.com"}])await assert.rejects(()=>sign(extra).then(jwt=>verifyGoogleToken(jwt,"nonce",keys)));
+  const badClaims=async(issuer:string,aud:string,exp:number)=>new SignJWT(claims).setProtectedHeader({alg:"RS256",kid:"test"}).setIssuer(issuer).setAudience(aud).setIssuedAt().setExpirationTime(exp).sign(privateKey);
+  for(const [issuer,aud,exp] of [["https://evil.example","test-google-client",Math.floor(Date.now()/1000)+300],["https://accounts.google.com","other-client",Math.floor(Date.now()/1000)+300],["https://accounts.google.com","test-google-client",1]] as const){
+    const jwt=await badClaims(issuer,aud,exp);await assert.rejects(()=>verifyGoogleToken(jwt,"nonce",keys));
+  }
+  process.env.GOOGLE_ALLOWED_EMAILS="another@example.com";
+  assert.equal(verify(session),false);
+  process.env.GOOGLE_ALLOWED_EMAILS="member@example.com";
+});
+const awaitableDummy="not.a.valid.jwt";

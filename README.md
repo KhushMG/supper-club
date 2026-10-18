@@ -150,3 +150,11 @@ No cron job starts weekly planning. Only **Find my dinners** starts a planning r
 - If interrupted, a run can resume from persisted tool results using **Resume if interrupted** or the scheduled runner. Failed runs stop visibly rather than silently burning credits. Network interruption after a model response but before persistence may require another counted model call; payment/order tools remain idempotent.
 
 Reference: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [model pricing](https://developers.openai.com/api/docs/models/gpt-4.1-mini).
+
+## Google sign-in and first-time survey
+
+Create a Web application OAuth client in Google Cloud → Google Auth Platform → Clients. Register `https://supper-club-umber.vercel.app/api/auth/google/callback` as its authorized redirect URI. Configure the consent screen and add your account as a test user while in Testing mode.
+
+Set server-only `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_ALLOWED_EMAILS` (comma-separated allowed household emails) in Vercel and redeploy. `APP_URL` must be `https://supper-club-umber.vercel.app`; keep the existing `AUTH_SECRET`. Until credentials are configured, household password login stays available.
+
+First-time Google identities complete a three-step preferences survey before the dashboard. Completion is persisted by Google account ID. Saving does not start AI research or ordering. The profile page displays Google-provided name/email and supports sign-out. This is still one private shared household: allowlisted members share preferences and plans, not separate tenant accounts.

@@ -15,7 +15,9 @@ test("plan, swap, incomplete Kroger pricing holds purchases, responsive layout",
   await page.getByRole("button", { name: "Edit preferences" }).click();
   for (const cuisine of defaults.cuisines) await page.getByRole("button", {name:cuisine,exact:true}).click();
   await page.getByLabel("Weekly budget · all in ($)").fill("500");
-  await page.getByRole("button", { name: "Build my dinner plan" }).click();
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("button", { name: /Find (my|new) dinners/ }).click();
   await expect(
     page
       .getByRole("region", { name: "Weekly approvals" })
@@ -261,7 +263,7 @@ test("new households have no preselected cuisines or sample meals", async ({page
   for(const cuisine of ['Italian','Mexican','Indian','Japanese']) {
     await expect(page.getByRole('button',{name:cuisine,exact:true})).toHaveAttribute('aria-pressed','false');
   }
-  await expect(page.getByRole('button',{name:'Build my dinner plan',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Save preferences',exact:true})).toBeDisabled();
   expect(generationRequests).toBe(0);
 });
 
@@ -303,4 +305,88 @@ test("failed planning explains its budget blocker while preserving the user's cu
   await page.getByRole('button',{name:'Edit preferences',exact:true}).click();
   await expect(page.getByRole('button',{name:'Japanese',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect(page.getByRole('button',{name:'Italian',exact:true})).toHaveAttribute('aria-pressed','false');
+});
+
+test("photos stay hidden until loaded and budget cap stays together", async ({page,request}) => {
+  const state=await (await request.get('/api/state')).json();
+  const plan=makePlan(recipes,{...defaults,budgetCents:27500},'2030-04-01');
+  plan.meals=plan.meals.map(m=>({...m,recipe:{...m.recipe,image:'https://photos.example/slow.svg'}}));
+  state.plans=[plan];state.activePlanId=plan.id;state.agentRuns=[];
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  let release!:()=>void;
+  const pending=new Promise<void>(resolve=>{release=resolve;});
+  await page.route('https://photos.example/slow.svg',async route=>{
+    await pending;
+    await route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="green"/></svg>'});
+  });
+  await page.goto('/');
+  const first=page.locator('.image-button').first();
+  await expect(first.locator('img')).toHaveCSS('opacity','0');
+  await expect(first.locator('img')).toHaveAttribute('alt','');
+  await expect(first.locator('.recipe-photo-fallback')).toBeVisible();
+  release();
+  await expect(first.locator('img')).toHaveCSS('opacity','1');
+  await expect(first.locator('.recipe-photo-fallback')).toHaveCount(0);
+  for(const width of [1280,1024,390]) {
+    await page.setViewportSize({width,height:900});
+    const cap=page.locator('.budget-cap');
+    await expect(cap).toHaveCSS('white-space','nowrap');
+    expect(await cap.evaluate(el=>{const range=document.createRange();range.selectNodeContents(el);return new Set([...range.getClientRects()].map(r=>Math.round(r.top))).size;})).toBe(1);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  }
+});
+
+test("saving preferences does not start planning",async({page,request})=>{
+  const state=await(await request.get('/api/state')).json();
+  state.agentRuns=[];
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  let saves=0,starts=0;
+  await page.route('**/api/preferences',route=>{
+    saves++;state.preferences=route.request().postDataJSON();return route.fulfill({json:{ok:true}});
+  });
+  await page.route('**/api/plans/generate',route=>{starts++;return route.fulfill({json:{runId:'test'}});});
+  await page.goto('/');
+  await page.getByRole('button',{name:'Edit preferences',exact:true}).click();
+  await page.getByLabel('Weekly budget · all in ($)').fill('275');
+  await page.getByRole('button',{name:'Save preferences',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(saves).toBe(1);expect(starts).toBe(0);
+  await page.reload();
+  await page.getByRole('button',{name:'Edit preferences',exact:true}).click();
+  await expect(page.getByLabel('Weekly budget · all in ($)')).toHaveValue('275');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:/Find (my|new) dinners/}).click();
+  await expect.poll(()=>starts).toBe(1);
+});
+
+test("profile identity appears in the sidebar and account page, with working sign-out",async({page,context})=>{
+  const {createHmac}=await import('node:crypto');
+  const profile={id:'google:test-account',name:'Alex Cook',email:'member@example.com',provider:'google'};
+  const body=Buffer.from(JSON.stringify({purpose:'session',exp:Date.now()+600000,profile})).toString('base64url');
+  const signature=createHmac('sha256','browser-test-signing-secret-not-for-production-12345').update(body).digest('base64url');
+  await context.addCookies([{name:'supper_session',value:body+'.'+signature,url:'http://localhost:3100',httpOnly:true,sameSite:'Lax'}]);
+  await page.goto('/');
+  let planningCalls = 0;
+  page.on('request', request => { if (request.url().endsWith('/api/plans/generate')) planningCalls++; });
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(page.getByRole('button',{name:'Italian',exact:true})).toHaveAttribute('aria-pressed','false');
+  await page.getByRole('button',{name:'Japanese',exact:true}).click();
+  await page.getByRole('button',{name:'Continue',exact:true}).click();
+  await page.getByRole('button',{name:'Continue',exact:true}).click();
+  await page.getByLabel('ZIP code').fill('98101');
+  await page.getByRole('button',{name:'Save preferences & continue'}).click();
+  await expect(page).toHaveURL('http://localhost:3100/');
+  expect(planningCalls).toBe(0);
+  await page.reload();
+  await expect(page).toHaveURL('http://localhost:3100/');
+  const link=page.getByRole('link',{name:'View your profile'});
+  await expect(link).toContainText('Alex Cook');
+  await expect(link).toContainText('member@example.com');
+  await link.click();
+  await expect(page.getByRole('heading',{name:'Your profile'})).toBeVisible();
+  await expect(page.locator('dd').filter({hasText:'member@example.com'})).toBeVisible();
+  await expect(page.getByText('google:test-account',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();
+  await expect(page).toHaveURL(/\/login$/);
+  expect((await context.cookies()).some(c=>c.name==='supper_session')).toBe(false);
 });

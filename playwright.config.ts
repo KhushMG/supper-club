@@ -21,7 +21,10 @@ export default defineConfig({
     env: {
       APP_URL: "http://localhost:3100",
       APP_PASSWORD: "",
-      AUTH_SECRET: "",
+      AUTH_SECRET: "browser-test-signing-secret-not-for-production-12345",
+      GOOGLE_ALLOWED_EMAILS: "member@example.com",
+      GOOGLE_CLIENT_ID: "",
+      GOOGLE_CLIENT_SECRET: "",
       OPENAI_API_KEY: "",
       KROGER_CLIENT_ID: "",
       KROGER_CLIENT_SECRET: "",

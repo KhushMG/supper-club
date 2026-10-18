@@ -9,6 +9,8 @@ import { z } from "zod";
 import { readState, mutate } from "@/lib/db";
 import {
   authorized,
+  sessionProfile,
+  requestSession,
   developmentAccess,
   equal,
   sameOrigin,
@@ -114,6 +116,7 @@ async function handle(req: Request) {
       const s = await readState();
       return json({
         ...s,
+        profile: sessionProfile(requestSession(req)) ?? null,
         recipes,
         agentRuns: await listRuns(),
         aiUsage: await usageSummary(),
@@ -147,10 +150,13 @@ async function handle(req: Request) {
       r.cookies.delete("supper_session");
       return r;
     }
-    if (path === "preferences") {
+    if (path === "preferences" || path === "onboarding") {
+      const profile = sessionProfile(requestSession(req));
+      if (path === "onboarding" && !profile) return json({ error: "Sign in with Google first." }, 401);
       const preferences = preferenceSchema.parse(body);
       await mutate((s) => {
         s.preferences = preferences;
+        if (path === "onboarding" && profile) s.onboardedProfiles = [...new Set([...(s.onboardedProfiles || []), profile.id])];
         log(
           s,
           "Preferences saved. Existing approved plans keep their original settings.",

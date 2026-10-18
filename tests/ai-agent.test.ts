@@ -16,7 +16,7 @@ import {
   reserveCall,
   usageSummary,
 } from "../lib/agent-store";
-import { makePlan, approve } from "../lib/domain";
+import { makePlan, approve, nextMonday } from "../lib/domain";
 import { defaults } from "./preferences";
 import { recipes } from "../lib/recipes";
 import { prepareSimulation } from "../lib/simulation";
@@ -385,6 +385,24 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
   assert.ok(plan.totalCents<=10000);
   assert.ok(plan.meals.every(m=>m.recipe.id==="cheaper"));
   assert.equal(plan.approvedRevision,undefined);
+});
+test("new searches stay on the upcoming week despite existing draft history", async () => {
+  const week=nextMonday(new Date(),defaults.timezone);
+  const first=await startPlanning({...defaults,budgetCents:50000},"same week fixture");
+  assert.equal(first.week,week);
+  const plan=makePlan(recipes,first.preferences,first.week);
+  plan.simulationQuote={revision:plan.revision,totalCents:plan.totalCents,missingItems:[],mockItemsCents:0,feeCents:0,taxCents:0};
+  first.candidate=plan;
+  await agentTool(first,"save_proposal",{summary:"First draft for the upcoming week."});
+  await saveRun(first);
+  const second=await startPlanning(first.preferences,"Search again without advancing dates");
+  assert.equal(second.week,week);
+  second.candidate={...structuredClone(plan),id:crypto.randomUUID()};
+  await agentTool(second,"save_proposal",{summary:"Replacement draft for the same week."});
+  await saveRun(second);
+  const state=await readState();
+  assert.equal(state.plans.find(p=>p.id===state.activePlanId)?.week,week);
+  assert.ok(state.plans.some(p=>p.id===first.planId));
 });
 test("server cache expires and requests can exceed 20 per day while enforcing the lifetime cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);

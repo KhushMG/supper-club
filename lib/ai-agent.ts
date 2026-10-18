@@ -103,12 +103,7 @@ export async function startPlanning(
   );
   if (existing) return existing;
   const state = await readState();
-  let week = nextMonday(new Date(), preferences.timezone);
-  while (state.plans.some((p) => p.week === week)) {
-    const d = new Date(week + "T12:00:00Z");
-    d.setUTCDate(d.getUTCDate() + 7);
-    week = d.toISOString().slice(0, 10);
-  }
+  const week = nextMonday(new Date(), preferences.timezone);
   const run: AgentRun = {
     id: crypto.randomUUID(),
     kind: "planning",
@@ -540,10 +535,8 @@ export async function agentTool(
         run.planId = saved.id;
         return;
       }
-      if (s.plans.some((p) => p.week === run.week))
-        throw new Error(
-          "Another plan occupies this week. Start a new planning run.",
-        );
+      // Re-searching creates a new draft for the same upcoming week.
+      // Keep previous plans and their payment/order records intact.
       s.plans.unshift(plan);
       s.activePlanId = plan.id;
       s.preferences = run.preferences;
