@@ -205,6 +205,20 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, [runningAgent?.id, pendingOrder, settings, refresh]);
   useEffect(() => {
+    if (runningAgent?.kind !== "planning") return;
+    // Hosting yields do not end an authorized search. The server lease prevents
+    // duplicate workers if the original request is still making progress.
+    const timer = setInterval(() => {
+      if (Date.now() - Date.parse(runningAgent.updatedAt) < 15000) return;
+      fetch("/api/agent/continue", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({runId:runningAgent.id}),
+      }).catch(() => {});
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [runningAgent?.id, runningAgent?.updatedAt, runningAgent?.kind]);
+  useEffect(() => {
     if (
       !settings &&
       !orderComplete &&

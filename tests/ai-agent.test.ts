@@ -8,6 +8,7 @@ import {
   driveAgent,
   agentTool,
   toolsForPlanning,
+  planningTurnLimit,
 } from "../lib/ai-agent";
 import { getRun, saveRun } from "../lib/agent-runs";
 import {
@@ -32,6 +33,9 @@ test("agent uses observed tool errors to choose its next tool; planning cannot e
   globalThis.fetch = async (_url, init) => {
     const body = JSON.parse(String(init?.body));
     requests.push(body);
+    assert.equal(body.model,"gpt-6-luna");
+    assert.equal(body.reasoning.effort,"medium");
+    assert.ok(body.include.includes("reasoning.encrypted_content"));
     count++;
     return Response.json({
       output: [
@@ -220,90 +224,34 @@ test("search configuration errors stop immediately instead of spending more retr
     globalThis.fetch = original;
   }
 });
-test("a valid priced proposal survives the model turn limit without another API call or order approval", async () => {
-  const run = await startPlanning(
-    { ...defaults, budgetCents: 50000 },
-    "recover ready proposal",
-  );
+test("planning continues past the former call and context caps and saves only for approval", async () => {
+  const run = await startPlanning({...defaults,budgetCents:50000}, "uncapped planning regression");
   const plan = makePlan(recipes, run.preferences, run.week);
-  plan.simulationQuote = {
-    revision: plan.revision,
-    totalCents: plan.totalCents,
-    missingItems: [],
-    mockItemsCents: 0,
-    feeCents: 0,
-    taxCents: 0,
-  };
-  run.candidate = plan;
-  run.calls = 8;
+  plan.simulationQuote = {revision:plan.revision,totalCents:plan.totalCents,missingItems:[],mockItemsCents:0,feeCents:0,taxCents:0};
+  run.candidate=plan;
+  run.calls=201;
+  run.budgetResearchAttempts=20;
+  run.input.push({role:"user",content:"x".repeat(50000)});
+  assert.equal(planningTurnLimit(run),Infinity);
   await saveRun(run);
-  const payments = (await readState()).payments.length;
-  const original = globalThis.fetch;
-  globalThis.fetch = async () => {
-    throw new Error("Unexpected paid API request");
-  };
-  try {
-    await driveAgent(run.id);
-  } finally {
-    globalThis.fetch = original;
-  }
-  const saved = await getRun(run.id);
-  assert.equal(saved?.status, "awaiting_approval");
-  const state = await readState();
-  const proposal = state.plans.find((p) => p.id === saved?.planId)!;
-  assert.equal(proposal.status, "draft");
-  assert.equal(proposal.approvedRevision, undefined);
-  assert.equal(state.payments.length, payments);
-  await driveAgent(run.id);
-  assert.equal(
-    (await readState()).plans.filter((p) => p.aiRunId === run.id).length,
-    1,
-  );
-
-  const invalid = await startPlanning(
-    defaults,
-    "over budget recovery rejected",
-  );
-  invalid.candidate = structuredClone(plan);
-  invalid.candidate.week = invalid.week;
-  invalid.candidate.totalCents = invalid.preferences.budgetCents + 1;
-  invalid.calls = 8;
-  await saveRun(invalid);
-  await driveAgent(invalid.id);
-  assert.equal((await getRun(invalid.id))?.status, "failed");
-  assert.equal(
-    (await readState()).plans.some((p) => p.aiRunId === invalid.id),
-    false,
-  );
-});
-test("a valid proposal survives the context size limit without a paid request", async () => {
-  const run = await startPlanning({ ...defaults, budgetCents: 50000 }, "context recovery");
-  const plan = makePlan(recipes, run.preferences, run.week);
-  plan.simulationQuote = {
-    revision: plan.revision, totalCents: plan.totalCents,
-    missingItems: [], mockItemsCents: 0, feeCents: 0, taxCents: 0,
-  };
-  run.candidate = plan;
-  run.input.push({ role: "user", content: "x".repeat(50000) });
-  await saveRun(run);
-  const original = globalThis.fetch;
-  let requests = 0;
-  globalThis.fetch = async () => {
+  const payments=(await readState()).payments.length;
+  const original=globalThis.fetch;
+  let requests=0;
+  globalThis.fetch=async(_url,init)=>{
     requests++;
-    throw new Error("Unexpected paid API request");
+    const body=JSON.parse(String(init?.body));
+    assert.ok(String(init?.body).length>45000);
+    assert.ok(!body.instructions.includes("Remaining tool turns"));
+    return Response.json({output:[{type:"function_call",call_id:"uncapped-save",name:"save_proposal",arguments:JSON.stringify({summary:"New verified proposal"})}],usage:{input_tokens:10,output_tokens:10}});
   };
-  try {
-    await driveAgent(run.id);
-  } finally {
-    globalThis.fetch = original;
-  }
-  const saved = await getRun(run.id);
-  assert.equal(requests, 0);
-  assert.equal(saved?.status, "awaiting_approval");
-  assert.equal(saved?.error, undefined);
-  const proposal = (await readState()).plans.find(p => p.id === saved?.planId)!;
-  assert.equal(proposal.status, "draft");
-  assert.equal(proposal.approvedRevision, undefined);
+  try { await driveAgent(run.id); } finally {globalThis.fetch=original;}
+  const saved=await getRun(run.id);
+  assert.equal(requests,1);
+  assert.equal(saved?.calls,202);
+  assert.equal(saved?.status,"awaiting_approval");
+  const state=await readState();
+  assert.equal(state.plans.find(p=>p.id===saved?.planId)?.status,"draft");
+  assert.equal(state.payments.length,payments);
 });
 test("recipe search reports fetched-but-rejected pages and keeps their publishers available", async () => {
   const run = await startPlanning(defaults, "diagnose invalid sources");
@@ -352,8 +300,9 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
   const expensive = {...recipes[0],id:"expensive",cuisine:"Italian",servings:2,minutes:30,ingredients:["100 g rice"]};
   const cheaper = {...expensive,id:"cheaper",title:"Quick beans",ingredients:["100 g beans"],source:"https://food.example/cheap-beans"};
   run.catalog=[expensive];
+  run.budgetResearchAttempts=20;
   for (const [name,cents] of [["rice",10000],["beans",100]] as const) {
-    await cachePut("kroger-v3:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
+    await cachePut("kroger-v4:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
       provider:"Kroger",environment:"production",storeId:"fixture",storeName:"Fixture",fetchedAt:new Date().toISOString(),
       items:[{ingredient:name,productId:name,description:name,size:"16 oz",regularCents:cents}],
     },60000);
@@ -381,7 +330,7 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
   try { await driveAgent(run.id); } finally {globalThis.fetch=original;}
   const saved=await getRun(run.id);
   assert.equal(saved?.status,"awaiting_approval");
-  assert.equal(saved?.budgetResearchAttempts,1);
+  assert.equal(saved?.budgetResearchAttempts,21);
   assert.equal(saved?.preferences.budgetCents,10000);
   const plan=(await readState()).plans.find(p=>p.id===saved?.planId)!;
   assert.ok(plan.totalCents<=10000);

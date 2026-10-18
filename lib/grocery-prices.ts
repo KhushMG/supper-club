@@ -48,6 +48,7 @@ export function normalizeIngredient(search: string) {
     .trim()
     .replace(/\([^)]*\)/g, " ")
     .replace(/\s+\d+\.\d+\)?$/, "")
+    .replace(/[()]/g, " ")
     .replace(/^\d+(?:\.\d+)?[ -]*(?:oz|ounce|lb|pound)s?\.?\s+(?:cans?|jars?|packages?)\s+/i, "")
     .replace(/^(?:(?:c\.|cups?|pinch|to serve|for serving|peeled|warmed|grated|shredded|sliced)\s+)+/, "")
     .replace(
@@ -57,6 +58,7 @@ export function normalizeIngredient(search: string) {
     .replace(/\s+hot or mild$/, "")
     .replace(/\s+(?:wedges|slices)$/, "")
     .replace(/garbanzo beans?/g, "chickpeas")
+    .replace(/\bbasil leaves\b/g, "basil")
     .replace(/parmigiano[ -]reggiano/g, "parmesan")
     .replace(/\bserrano (?:chiles?|chill?i(?:es)?)\b/g, "serrano pepper")
     .replace(/red pepper flakes/g, "crushed red pepper")
@@ -68,9 +70,11 @@ function ingredientOptions(search: string) {
   const term = normalizeIngredient(search);
   // Only accept alternatives explicitly offered by the recipe. Share the noun
   // in “cheddar or American cheese” without requiring both cheeses in a blend.
-  return term.split(/\s+or\s+/).map(option =>
-    /\bcheese$/.test(term) && !/\bcheese$/.test(option) ? option + " cheese" : option,
-  );
+  const shared = term.match(/\b(basil(?: leaves)?|cheese|salt|pepper|rice|onions?|flour|oil|bread)$/)?.[1];
+  return term.split(/\s+or\s+/).map(option => {
+    if (shared && !option.endsWith(shared) && (shared === "cheese" || /^(holy|thai|sea|kosher|red|green|yellow|white|black|brown|sweet)$/.test(option))) return option + " " + shared;
+    return option;
+  });
 }
 export function retrievalQueries(search: string) {
   const aliases: Record<string, string[]> = {
@@ -182,7 +186,12 @@ function matchingProducts(data: unknown, search?: string) {
       if (normalized === "ginger" && words.some(w => ["ground", "powder", "tea", "juice", "crystallized", "pickled"].includes(w))) return false;
       return tokens.every((t) => words.includes(t.replace(/s$/, "")));
     }))
-    .sort((a, b) => a.description.length - b.description.length);
+    .sort((a, b) => {
+      const price = (product: z.infer<typeof item>) => Math.min(...(product.items || []).map(sku => sku.price?.regular ?? Infinity));
+      // Whole-package purchasing: prefer the lower upfront price among suitable
+      // matches, rather than a short product name or premium bulk package.
+      return price(a) - price(b) || a.description.length - b.description.length;
+    });
 }
 export function parseProduct(data: unknown, search?: string) {
   const product = matchingProducts(data, search).find((p) =>
@@ -409,7 +418,7 @@ export async function livePrices(
     ...new Set(plan.batches.flatMap((b) => b.groceries.map((g) => g.name))),
   ];
   const key =
-    "kroger-v3:" +
+    "kroger-v4:" +
     cacheKey({
       environment: krogerEnvironment(),
       zip: plan.preferences.zip,

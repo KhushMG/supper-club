@@ -1,0 +1,21 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {AGENT_MODEL,RECIPE_SEARCH_MODEL,tokenCostMicroUsd} from '../lib/ai-models';
+import {database} from '../lib/db';
+import {reserveCall,recordTokens,reserveSearchFee,usageSummary} from '../lib/agent-store';
+process.env.TURSO_DATABASE_URL='file:'+join(tmpdir(),'model-cost-'+crypto.randomUUID()+'.db');
+test('Luna model pricing preserves historical costs and counts cached tokens and hosted searches',async()=>{
+  assert.equal(AGENT_MODEL,'gpt-6-luna');assert.equal(RECIPE_SEARCH_MODEL,'gpt-6-luna');
+  assert.equal(tokenCostMicroUsd(10000,2000,AGENT_MODEL,4000),1640);
+  await database().execute('CREATE TABLE agent_usage (day TEXT PRIMARY KEY,calls INTEGER NOT NULL DEFAULT 0,input_tokens INTEGER NOT NULL DEFAULT 0,output_tokens INTEGER NOT NULL DEFAULT 0)');
+  await database().execute("INSERT INTO agent_usage VALUES('2020-01-01',1,1000,200)");
+  const day=await reserveCall();
+  assert.equal((await usageSummary()).estimatedUsd,0.00072);
+  await recordTokens(day,10000,2000,AGENT_MODEL,4000);
+  await reserveSearchFee(day,RECIPE_SEARCH_MODEL);await reserveSearchFee(day,RECIPE_SEARCH_MODEL);
+  const usage=await usageSummary();
+  assert.equal(usage.calls,2);assert.equal(usage.estimatedUsd,0.02236);
+  assert.equal(usage.lifetimeCallLimit,null);
+});

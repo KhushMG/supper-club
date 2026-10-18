@@ -1,3 +1,4 @@
+import { AGENT_MODEL } from "./ai-models";
 import {
   cacheKey,
   cached,
@@ -14,7 +15,7 @@ export type ModelItem = {
 };
 export type ModelReply = {
   output: ModelItem[];
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: { input_tokens: number; output_tokens: number; input_tokens_details?: {cached_tokens?:number} };
 };
 export type AgentTool = {
   type: "function";
@@ -133,20 +134,18 @@ export async function callModel(
   if (!process.env.OPENAI_API_KEY)
     throw new Error("Configure OPENAI_API_KEY to run the AI agent.");
   const body = {
-    model: "gpt-4.1-mini",
+    model: AGENT_MODEL,
+    reasoning: {effort: "medium"},
+    include: ["reasoning.encrypted_content"],
     store: false,
     instructions,
     input: compactInput(input),
     tools,
     parallel_tool_calls: false,
     tool_choice: "required",
-    max_output_tokens: 1800,
+    max_output_tokens: 6000,
   };
   const encoded = JSON.stringify(body);
-  if (Buffer.byteLength(encoded) > 45000)
-    throw new Error(
-      "Agent context limit reached. Start a narrower plan to keep AI spend low.",
-    );
   const key = "model-v1:" + cacheKey(body);
   if (allowCache) {
     const hit = await cached<ModelReply>(key);
@@ -160,7 +159,7 @@ export async function callModel(
       "Content-Type": "application/json",
     },
     body: encoded,
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(90000),
   });
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
@@ -173,6 +172,8 @@ export async function callModel(
     day,
     reply.usage?.input_tokens || 0,
     reply.usage?.output_tokens || 0,
+    AGENT_MODEL,
+    reply.usage?.input_tokens_details?.cached_tokens || 0,
   );
   if (!Array.isArray(reply.output))
     throw new Error("Model returned no tool calls.");

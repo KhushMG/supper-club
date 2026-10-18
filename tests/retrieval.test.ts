@@ -184,3 +184,17 @@ test('an explicitly allowed second ingredient is retrieved at the selected store
   assert.deepEqual(terms,['cheddar cheese','american cheese']);
   assert.equal(match.regularCents,249);
 });
+
+test('adjective alternatives retain the food noun instead of matching a brand',()=>{
+  assert.deepEqual(retrievalQueries('holy or thai basil leaves )'),['holy basil','thai basil']);
+  assert.equal(parseProduct({data:[product('Artikaas Holy Sheep Gouda')]},'holy or thai basil leaves )'),undefined);
+  assert.ok(parseProduct({data:[product('Thai Basil Leaves')]},'holy or thai basil leaves )'));
+  assert.equal(parseProduct({data:[product('Sea Breeze Candy')]},'sea or kosher salt'),undefined);
+});
+
+test('suitable packages are ranked by upfront price before description length',()=>{
+  const bulk={...product('Oregano'),productId:'bulk',items:[{size:'16 oz',price:{regular:28.99}}]};
+  const regular={...product('Kroger Oregano Leaves'),productId:'regular',items:[{size:'0.75 oz',price:{regular:1.99}}]};
+  const bad={...product('Oregano Shampoo'),productId:'bad',items:[{price:{regular:0.99}}]};
+  assert.equal(parseProduct({data:[bulk,bad,regular]},'oregano')?.productId,'regular');
+});

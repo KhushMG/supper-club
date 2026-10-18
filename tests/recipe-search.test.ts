@@ -8,13 +8,15 @@ import { publicIPv4 } from "../lib/recipe-page";
 process.env.TURSO_DATABASE_URL =
   "file:" + join(tmpdir(), "recipe-search-" + crypto.randomUUID() + ".db");
 process.env.OPENAI_API_KEY = "test";
-test("web discovery is query-driven, cached by feedback, and bounded", async () => {
+test("web discovery is query-driven and cached without a hosted search call cap", async () => {
   const original = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async (_url, init) => {
     calls++;
     const body = JSON.parse(String(init?.body));
-    assert.equal(body.max_tool_calls, 1);
+    assert.equal(body.max_tool_calls, undefined);
+    assert.equal(body.model,"gpt-6-luna");
+    assert.equal(body.reasoning.effort,"low");
     assert.equal(body.text.format.type, "json_schema");
     assert.equal(body.text.format.strict, true);
     assert.equal(body.tools[0].type, "web_search");

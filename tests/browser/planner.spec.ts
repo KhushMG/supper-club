@@ -578,3 +578,16 @@ test('switching sections while the planning request starts preserves pending sta
   await expect(page).toHaveURL(/\/groceries$/);
   await expect(page.locator('.grocery-pending')).toBeVisible();
 });
+
+test('interrupted planning resumes automatically without another approval',async({page,request})=>{
+  const state=await(await request.get('/api/state')).json();
+  state.agentRuns=[{id:'resume-planning',kind:'planning',status:'running',updatedAt:'2020-01-01T00:00:00Z'}];
+  await page.route('**/api/state',route=>route.fulfill({json:state}));
+  let continued=0;
+  await page.route('**/api/agent/continue',route=>{expect(route.request().postDataJSON().runId).toBe('resume-planning');continued++;return route.fulfill({json:{ok:true}});});
+  await page.clock.install();
+  await page.goto('/groceries');await expect(page.locator('.grocery-pending')).toBeVisible();
+  await page.clock.fastForward(16000);
+  await expect.poll(()=>continued).toBe(1);
+  await expect(page).toHaveURL(/\/groceries$/);
+});
