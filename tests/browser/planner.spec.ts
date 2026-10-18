@@ -166,6 +166,13 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  const card = page.locator(".skeleton-card").first();
+  const bounds = await card.boundingBox();
+  await page.waitForTimeout(350);
+  expect(await card.boundingBox()).toEqual(bounds);
+  await page.emulateMedia({reducedMotion:"reduce"});
+  expect(await card.evaluate(el => el.getAnimations({subtree:true}).filter(a => a.playState === "running").length)).toBe(0);
+  await page.emulateMedia({reducedMotion:"no-preference"});
   ready = true;
   await expect(page.locator(".skeleton-card")).toHaveCount(0, {
     timeout: 10000,

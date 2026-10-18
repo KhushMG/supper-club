@@ -1755,17 +1755,31 @@ textarea {
   grid-area: 1 / 1;
 }
 .skeleton-card {
+  position: relative;
+  isolation: isolate;
   overflow: hidden;
   border: 1px solid #e8e5db;
   border-radius: 16px;
   background: #fff;
 }
 .skeleton {
-  background: linear-gradient(100deg, #eeeae1 25%, #f9f7f0 45%, #eeeae1 65%);
-  background-size: 250% 100%;
-  animation: menu-shimmer 1.8s ease-in-out infinite;
+  background: #eeeae1;
   border-radius: 6px;
 }
+/* One soft sweep per card keeps the placeholders moving together. The band
+   exits completely before resetting, so there is no visible loop seam. */
+.skeleton-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 20%, #ffffff65 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: menu-shimmer 3.8s linear infinite;
+  animation-delay: -0.8s;
+}
+.skeleton-card:nth-child(3n + 2)::after { animation-delay: -2.1s; }
+.skeleton-card:nth-child(3n)::after { animation-delay: -3.4s; }
 .skeleton-day {
   height: 15px;
   width: 36%;
@@ -1819,13 +1833,14 @@ textarea {
 }
 @keyframes menu-shimmer {
   from {
-    background-position: 100% 0;
+    transform: translateX(-100%);
   }
   to {
-    background-position: -100% 0;
+    transform: translateX(100%);
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .skeleton-card::after { display: none; animation: none; }
   .skeleton,
   .kitchen-loading .spin,
   .kitchen-toast .spin {
