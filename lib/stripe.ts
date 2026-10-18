@@ -68,6 +68,7 @@ export async function createCheckout(
       planId,
       revision: plan.revision,
       amountCents: plan.totalCents,
+      returnOrigin: origin,
       status: "creating",
       createdAt: new Date().toISOString(),
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -124,8 +125,9 @@ export async function createCheckout(
           revision: String(attempt.revision),
         },
         success_url:
-          origin + "/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
-        cancel_url: origin + "/?checkout=cancelled",
+          (attempt.returnOrigin || origin) +
+          "/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
+        cancel_url: (attempt.returnOrigin || origin) + "/?checkout=cancelled",
         expires_at: attempt.expiresAt,
       },
       { idempotencyKey: "supper-test-" + attempt.id },

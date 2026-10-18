@@ -68,6 +68,7 @@ export type Plan = {
   issue?: string;
 };
 export type Payment = {
+  returnOrigin?: string;
   id: string;
   planId: string;
   revision: number;

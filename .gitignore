@@ -64,3 +64,4 @@ next-env.d.ts
 
 # Local execution metadata, not part of the Vercel deployment
 .openai/
+.local-access.txt

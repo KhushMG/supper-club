@@ -2,6 +2,14 @@
 
 A standard **Next.js App Router** application: cuisine preferences → actual published recipes → weekly approval → budget-checked sandbox grocery orders. Includes **Stripe test Checkout**, persistent household state, meal swaps, pantry quantities, delivery scheduling, and an activity log. No Edamam or paid recipe-data subscription.
 
+## Current deployment
+
+- App: https://supper-club-umber.vercel.app
+- Private source: https://github.com/KhushMG/supper-club
+- Hosting: Vercel, with a free Turso database and Stripe test sandbox.
+- The generated household sign-in password is saved in `.local-access.txt` on the development machine (ignored by Git).
+- `.github/workflows/scheduler.yml` invokes the protected runner hourly using repository secrets.
+
 ## Run locally
 
 Node 22+ and npm:
@@ -54,7 +62,9 @@ Set `CRON_SECRET` to a random secret, then arrange an hourly authenticated `GET 
 curl -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/jobs"
 ```
 
-If your Vercel plan supports hourly cron, replace `vercel.json` with `vercel.cron.example.json` and redeploy. The default config deliberately does not require a paid cron tier. Any external scheduler that securely supplies the Authorization header also works. A configured secret alone does not mean scheduling is active; **Activity/Deliveries shows the last successful runner check-in**.
+This repository includes an hourly GitHub Actions scheduler. Set repository Actions secrets `APP_URL` and `CRON_SECRET` to activate it; they are configured for the current deployment. Use **Actions → Run dinner planner → Run workflow** for an immediate run. GitHub scheduled runs can be delayed, so delivery slots must still be checked at execution.
+
+Alternatively, if your Vercel plan supports hourly cron, replace `vercel.json` with `vercel.cron.example.json` and redeploy. The default config deliberately does not require a paid cron tier. Any external scheduler that securely supplies the Authorization header also works. A configured secret alone does not mean scheduling is active; **Activity/Deliveries shows the last successful runner check-in**.
 
 The runner drafts the next Monday–Sunday plan Friday after 9 a.m. in the household’s IANA timezone, with weekend catch-up. It never approves the draft. Approved batches submit 24 hours before the target delivery time; arrival targets are one hour before cooking. Batches cover at most three days. Missed delivery windows are held for review. Repeated jobs do not create duplicate sandbox orders.
 
