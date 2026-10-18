@@ -1,26 +1,9 @@
 import snapshots from "@/data/recipes.json";
 import type { Recipe, Preferences } from "./types";
 export const recipes: Recipe[] = snapshots;
-const hosts = new Set([
-  "www.budgetbytes.com",
-  "budgetbytes.com",
-  "www.bbcgoodfood.com",
-  "www.simplyrecipes.com",
-]);
-export function validRecipeUrl(s: string) {
-  try {
-    const u = new URL(s);
-    return (
-      u.protocol === "https:" &&
-      hosts.has(u.hostname) &&
-      !u.username &&
-      !u.password &&
-      !u.port
-    );
-  } catch {
-    return false;
-  }
-}
+import { recipePage } from "./recipe-page";
+import { createHash } from "node:crypto";
+export { validRecipeUrl } from "./recipe-page";
 function findRecipe(node: unknown): Record<string, unknown> | undefined {
   if (Array.isArray(node)) {
     for (const n of node) {
@@ -43,29 +26,7 @@ export async function fetchRecipe(
   url: string,
   cuisine: string,
 ): Promise<Recipe> {
-  if (!validRecipeUrl(url)) throw new Error("Recipe host is not supported.");
-  const res = await fetch(url, {
-    headers: { "User-Agent": "SupperClub/1.0 recipe reader" },
-    redirect: "error",
-    signal: AbortSignal.timeout(15000),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("Could not open recipe source.");
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("Empty recipe source");
-  let html = "",
-    size = 0;
-  const decoder = new TextDecoder();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.length;
-    if (size > 2500000) {
-      await reader.cancel();
-      throw new Error("Recipe page too large");
-    }
-    html += decoder.decode(value, { stream: true });
-  }
+  const html = await recipePage(url);
   for (const match of html.matchAll(
     /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
   )) {
@@ -81,7 +42,9 @@ export async function fetchRecipe(
       ? node.recipeYield[0]
       : node.recipeYield;
     const servings = Number(String(yieldValue).match(/\d+/)?.[0]);
-    const duration = String(node.totalTime ?? "");
+    const duration = String(
+      node.totalTime || `${node.prepTime || ""}${node.cookTime || ""}`,
+    );
     const minutes = [...duration.matchAll(/(\d+)([HM])/g)].reduce(
       (n, m) => n + Number(m[1]) * (m[2] === "H" ? 60 : 1),
       0,
@@ -98,7 +61,7 @@ export async function fetchRecipe(
       );
     const image = Array.isArray(node.image) ? node.image[0] : node.image;
     return {
-      id: new URL(url).pathname.replace(/\W/g, "-"),
+      id: createHash("sha256").update(url).digest("hex").slice(0, 24),
       title: String(node.name),
       cuisine,
       source: url,
@@ -123,9 +86,18 @@ export async function discover(
   p: Preferences,
   feedback: string,
 ): Promise<{ recipes: Recipe[]; mode: "published-recipes" | "ai-browsing" }> {
-  if (feedback.trim()) throw new Error("Use the AI planning run for free-text meal feedback.");
-  const current = await Promise.all(recipes.filter(r=>p.cuisines.includes(r.cuisine)).map(async r=>{
-    try{return await fetchRecipe(r.source,r.cuisine)}catch{return r}
-  }));
-  return {recipes:current,mode:"published-recipes"};
+  if (feedback.trim())
+    throw new Error("Use the AI planning run for free-text meal feedback.");
+  const current = await Promise.all(
+    recipes
+      .filter((r) => p.cuisines.includes(r.cuisine))
+      .map(async (r) => {
+        try {
+          return await fetchRecipe(r.source, r.cuisine);
+        } catch {
+          return r;
+        }
+      }),
+  );
+  return { recipes: current, mode: "published-recipes" };
 }

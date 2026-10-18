@@ -33,6 +33,7 @@ export type AgentRunSummary = Pick<
   | "calls"
   | "cacheHits"
   | "trace"
+  | "revision"
   | "planId"
   | "error"
   | "summary"
@@ -48,6 +49,7 @@ export function publicRun(r: AgentRun): AgentRunSummary {
     cacheHits,
     trace,
     planId,
+    revision,
     error,
     summary,
   } = r;
@@ -61,6 +63,7 @@ export function publicRun(r: AgentRun): AgentRunSummary {
     cacheHits,
     trace,
     planId,
+    revision,
     error,
     summary,
   };

@@ -66,6 +66,11 @@ export default function Dashboard() {
   const [data, setData] = useState<Data>(),
     [tab, setTab] = useState("week"),
     [settings, setSettings] = useState(false),
+    [pendingOrder, setPendingOrder] = useState<{
+      id: string;
+      revision: number;
+    }>(),
+    [orderComplete, setOrderComplete] = useState<Plan>(),
     [detail, setDetail] = useState<Recipe>(),
     [swap, setSwap] = useState<number>(),
     [busy, setBusy] = useState(""),
@@ -143,12 +148,18 @@ export default function Dashboard() {
   }, [refresh, act]);
   const runningAgent = data?.agentRuns?.find((r) => r.status === "running");
   useEffect(() => {
-    if (!runningAgent || settings) return;
+    if ((!runningAgent && !pendingOrder) || settings) return;
     const timer = setInterval(() => refresh().catch(() => {}), 4000);
     return () => clearInterval(timer);
-  }, [runningAgent?.id, settings, refresh]);
+  }, [runningAgent?.id, pendingOrder, settings, refresh]);
   useEffect(() => {
-    if (!settings && detail === undefined && swap === undefined) return;
+    if (
+      !settings &&
+      !orderComplete &&
+      detail === undefined &&
+      swap === undefined
+    )
+      return;
     const previous = document.activeElement as HTMLElement | null;
     const oldOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -182,6 +193,7 @@ export default function Dashboard() {
         setSettings(false);
         setDetail(undefined);
         setSwap(undefined);
+        setOrderComplete(undefined);
       }
     };
     window.addEventListener("keydown", f);
@@ -189,9 +201,48 @@ export default function Dashboard() {
       window.removeEventListener("keydown", f);
       restore();
     };
-  }, [settings, detail, swap]);
+  }, [settings, detail, swap, orderComplete]);
   const plan = data?.plans.find((p) => p.id === data.activePlanId),
     payments = data?.payments.filter((p) => p.planId === plan?.id) ?? [];
+  useEffect(() => {
+    if (!pendingOrder || !data) return;
+    const p = data.plans.find((p) => p.id === pendingOrder.id);
+    const execution = data.agentRuns?.find(
+      (r) =>
+        r.kind === "execution" &&
+        r.planId === pendingOrder.id &&
+        r.revision === pendingOrder.revision,
+    );
+    if (
+      !p ||
+      p.revision !== pendingOrder.revision ||
+      p.agentError ||
+      execution?.status === "failed"
+    ) {
+      setError(
+        p?.agentError ||
+          execution?.error ||
+          "The plan changed. Review it before ordering.",
+      );
+      setPendingOrder(undefined);
+      return;
+    }
+    if (
+      p.agentPaidRevision === pendingOrder.revision &&
+      (!p.aiRunId || execution?.status === "completed")
+    ) {
+      setSettings(false);
+      setDetail(undefined);
+      setSwap(undefined);
+      setOrderComplete(p);
+      setPendingOrder(undefined);
+    }
+  }, [data, pendingOrder]);
+  async function approveOrder() {
+    if (!plan) return;
+    setPendingOrder({ id: plan.id, revision: plan.revision });
+    if (!(await planAction("plans/approve"))) setPendingOrder(undefined);
+  }
   const selected = plan?.preferences ?? preferences;
   const total = plan?.totalCents ?? 0;
   const spent =
@@ -236,7 +287,7 @@ export default function Dashboard() {
       setTab("week");
       setNotice(
         data?.integrations.ai
-          ? "Week approved. The agent is planning; approve the order once its proposal is ready."
+          ? "Finding dinners for you. Review the recipes, then approve the week and order together."
           : "Your week is ready. Review it, then approve the order.",
       );
     }
@@ -262,29 +313,83 @@ export default function Dashboard() {
         <section className="sidebar-approvals" aria-label="Weekly approvals">
           <p className="nav-label">YOUR NEXT STEPS</p>
           <button
-            className="primary full"
+            className={plan || runningAgent ? "secondary full" : "primary full"}
             disabled={!data || !!busy || !!runningAgent}
             onClick={generate}
           >
-            <span className="approval-step">1</span> Approve week
+            <span className="approval-step">1</span>{" "}
+            {runningAgent?.kind === "planning"
+              ? "Finding dinners…"
+              : plan
+                ? "Find new dinners"
+                : "Find my dinners"}
           </button>
-          <small>Start AI planning · {money(preferences.budgetCents)} budget</small>
+          <small>
+            Start AI planning · {money(preferences.budgetCents)} budget
+          </small>
           <button
-            className="secondary full"
-            disabled={!plan || !!busy || !!runningAgent || !["draft", "paused"].includes(plan.status) || !plan.simulationQuote || plan.totalCents > plan.preferences.budgetCents || plan.batches.some(b => !!b.orderId)}
-            onClick={() => planAction("plans/approve")}
+            className={
+              plan?.status === "approved" ? "secondary full" : "primary full"
+            }
+            disabled={
+              !plan ||
+              !!busy ||
+              !!runningAgent ||
+              !["draft", "paused"].includes(plan.status) ||
+              !plan.simulationQuote ||
+              plan.totalCents > plan.preferences.budgetCents ||
+              plan.batches.some((b) => !!b.orderId)
+            }
+            onClick={approveOrder}
           >
-            <span className="approval-step">2</span> Approve order
+            <span className="approval-step">2</span>{" "}
+            {pendingOrder
+              ? "Placing test order…"
+              : plan?.status === "approved"
+                ? "Week & order approved"
+                : "Approve week & order"}
           </button>
-          <small>{runningAgent?.kind === "planning" ? "Waiting for the agent’s proposal" : plan?.status === "approved" ? "Order approved · agent handles execution" : plan?.simulationQuote ? `Authorize the ${money(plan.totalCents)} test order` : "Available when your proposal is ready"}</small>
+          <small>
+            {runningAgent?.kind === "planning"
+              ? "Waiting for the agent’s proposal"
+              : plan?.status === "approved"
+                ? "Order approved · agent handles execution"
+                : plan?.simulationQuote
+                  ? `Authorize the ${money(plan.totalCents)} test order`
+                  : "Available when your proposal is ready"}
+          </small>
           {plan?.status === "approved" && (
-            <button className="text-button" disabled={!!busy} onClick={() => planAction("plans/pause")}>
+            <button
+              className="text-button"
+              disabled={!!busy}
+              onClick={() => planAction("plans/pause")}
+            >
               <Pause size={15} /> Pause ordering
             </button>
           )}
-          {plan?.agentError && <small className="error">{plan.agentError}</small>}
-          {plan && plan.totalCents > plan.preferences.budgetCents && <small className="error">Over budget. Adjust the plan before approving.</small>}
-          <button className="text-button" onClick={() => setSettings(true)}>Change preferences</button>
+          {data?.agentRuns?.[0]?.error && (
+            <small className="error">{data.agentRuns[0].error}</small>
+          )}
+          {runningAgent && (
+            <button
+              className="text-button"
+              disabled={!!busy}
+              onClick={() => act("agent/continue", { runId: runningAgent.id })}
+            >
+              Continue if interrupted
+            </button>
+          )}
+          {plan?.agentError && (
+            <small className="error">{plan.agentError}</small>
+          )}
+          {plan && plan.totalCents > plan.preferences.budgetCents && (
+            <small className="error">
+              Over budget. Adjust the plan before approving.
+            </small>
+          )}
+          <button className="text-button" onClick={() => setSettings(true)}>
+            Change preferences
+          </button>
         </section>
         <p className="nav-label">YOUR KITCHEN</p>
         <nav>
@@ -344,65 +449,6 @@ export default function Dashboard() {
           </button>
         </header>
         <div className="content">
-          {data?.agentRuns?.[0] && (
-            <section className="panel" aria-live="polite">
-              <h2>
-                {runningAgent
-                  ? "Your AI agent is working"
-                  : "AI agent activity"}
-              </h2>
-              <p>
-                {data.agentRuns[0].kind === "planning"
-                  ? "Weekly planning authorized · final order approval still required"
-                  : "Order approved · executing test payment and simulated fulfillment"}
-              </p>
-              <p>
-                {data.agentRuns[0].summary ||
-                  data.agentRuns[0].status.replaceAll("_", " ")}
-              </p>
-              {data.agentRuns[0].error && (
-                <p className="error">{data.agentRuns[0].error}</p>
-              )}
-              <details open={!!runningAgent}>
-                <summary>
-                  Tools and results · {data.agentRuns[0].calls} steps ·{" "}
-                  {data.agentRuns[0].cacheHits} cache hits
-                </summary>
-                <ol>
-                  {data.agentRuns[0].trace.map((step, i) => (
-                    <li key={i}>
-                      <strong>{step.tool.replaceAll("_", " ")}</strong>:{" "}
-                      {step.summary}
-                    </li>
-                  ))}
-                </ol>
-              </details>
-              {data.aiUsage && (
-                <small>
-                  AI usage: approximately $
-                  {data.aiUsage.estimatedUsd.toFixed(4)} across{" "}
-                  {data.aiUsage.calls} API calls. Limit: 20 calls/day, 200
-                  total. Page refreshes use no AI calls.
-                </small>
-              )}
-              {runningAgent && (
-                <button
-                  className="text-button"
-                  disabled={!!busy}
-                  onClick={() =>
-                    act(
-                      "agent/continue",
-                      { runId: runningAgent.id },
-                      "Resuming agent",
-                    )
-                  }
-                >
-                  Resume if interrupted
-                </button>
-              )}
-            </section>
-          )}
-
           <div className="page-heading">
             <div>
               <p className="eyebrow">
@@ -1105,6 +1151,44 @@ export default function Dashboard() {
           </footer>
         </div>
       </main>
+      {orderComplete && (
+        <div className="modal-backdrop">
+          <section
+            className="modal order-complete-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-complete-title"
+          >
+            <button
+              className="close"
+              aria-label="Close confirmation"
+              onClick={() => setOrderComplete(undefined)}
+            >
+              <X />
+            </button>
+            <CheckCircle2 size={42} />
+            <h2 id="order-complete-title">Test checkout complete</h2>
+            <p>
+              Your agent confirmed the {money(orderComplete.totalCents)} test
+              payment for the week of {prettyDate(orderComplete.week)} and
+              scheduled your simulated deliveries.
+            </p>
+            <p>No real groceries were purchased.</p>
+            <button
+              className="primary full"
+              disabled={!!busy}
+              onClick={async () => {
+                if (await act("plans/select", { planId: orderComplete.id })) {
+                  setTab("deliveries");
+                  setOrderComplete(undefined);
+                }
+              }}
+            >
+              View this week’s deliveries <ArrowRight size={18} />
+            </button>
+          </section>
+        </div>
+      )}
       {settings && (
         <div
           className="modal-backdrop"
@@ -1417,9 +1501,9 @@ export default function Dashboard() {
                 </label>
               </details>
               <p className="muted">
-                Approve this week to authorize AI research and basket planning.
-                You’ll review the meals and total before a separate order
-                approval. No automatic weekly planning.
+                Find my dinners starts recipe research and basket planning.
+                Review the meals and total, then select Approve week &amp; order
+                to approve the recipes and authorize execution together.
               </p>
               {error && (
                 <p className="error" role="alert">
@@ -1444,7 +1528,7 @@ export default function Dashboard() {
                 {busy
                   ? "Starting your agent…"
                   : data?.integrations.ai
-                    ? "Approve week & start agent"
+                    ? "Find my dinners"
                     : "Build my dinner plan"}
                 <ArrowRight size={17} />
               </button>

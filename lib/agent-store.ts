@@ -18,6 +18,9 @@ export async function agentStorage() {
         "CREATE UNIQUE INDEX IF NOT EXISTS one_execution_revision ON agent_runs(json_extract(value, '$.planId'),json_extract(value, '$.revision')) WHERE json_extract(value, '$.kind')='execution'",
       );
       await database().execute(
+        "CREATE TABLE IF NOT EXISTS agent_search_fees (day TEXT PRIMARY KEY, micro_usd INTEGER NOT NULL DEFAULT 0)",
+      );
+      await database().execute(
         "CREATE TABLE IF NOT EXISTS agent_usage (day TEXT PRIMARY KEY, calls INTEGER NOT NULL DEFAULT 0, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0)",
       );
     })();
@@ -77,16 +80,29 @@ export async function recordTokens(day: string, input: number, output: number) {
     args: [input, output, day],
   });
 }
+export async function reserveSearchFee(day: string) {
+  // $0.01 search fee + a conservative $0.0032 search-token allowance.
+  await database().execute({
+    sql: "INSERT INTO agent_search_fees(day,micro_usd) VALUES(?,13200) ON CONFLICT(day) DO UPDATE SET micro_usd=micro_usd+13200",
+    args: [day],
+  });
+}
 export async function usageSummary() {
   await agentStorage();
   const r = await database().execute(
     "SELECT SUM(calls) calls,SUM(input_tokens) input,SUM(output_tokens) output FROM agent_usage",
   );
   const x = r.rows[0];
+  const fees = await database().execute(
+    "SELECT SUM(micro_usd) total FROM agent_search_fees",
+  );
   return {
     calls: Number(x.calls || 0),
     estimatedUsd:
-      (Number(x.input || 0) * 0.4 + Number(x.output || 0) * 1.6) / 1e6,
+      (Number(x.input || 0) * 0.4 +
+        Number(x.output || 0) * 1.6 +
+        Number(fees.rows[0].total || 0)) /
+      1e6,
     dailyCallLimit: 20,
     lifetimeCallLimit: 200,
   };

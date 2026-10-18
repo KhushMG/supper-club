@@ -28,11 +28,12 @@ test("cross-origin mutations rejected", () => {
     true,
   );
 });
-test("recipe fetching blocks local, untrusted and credential-bearing URLs", () => {
+test("recipe fetching blocks local and credential-bearing URLs", () => {
   for (const u of [
     "http://127.0.0.1",
     "https://localhost",
-    "https://www.budgetbytes.com.evil.com/",
+    "https://169.254.169.254/",
+    "https://[::1]/",
     "https://user:pass@www.budgetbytes.com/",
     "file:///etc/passwd",
   ])
@@ -41,4 +42,8 @@ test("recipe fetching blocks local, untrusted and credential-bearing URLs", () =
     validRecipeUrl("https://www.budgetbytes.com/creamy-tomato-spinach-pasta/"),
     true,
   );
+});
+
+test("recipe search accepts other public publishers", () => {
+  assert.equal(validRecipeUrl("https://www.seriouseats.com/dinner"), true);
 });
