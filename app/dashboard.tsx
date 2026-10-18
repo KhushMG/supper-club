@@ -671,15 +671,7 @@ export default function Dashboard() {
                           : "Published recipes. A plan built around you."}
                       </p>
                     </div>
-                    {plan && (
-                      <button
-                        className="text-button"
-                        onClick={() => setSettings(true)}
-                      >
-                        <RefreshCw size={14} />
-                        Replan week
-                      </button>
-                    )}
+
                   </div>
                   <div className="planner-layout">
                     <div>
