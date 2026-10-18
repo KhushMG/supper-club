@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey, type JWTPayload } from "jose";
-import { allowedGoogleEmail, equal, readAuthData, signAuthData } from "./auth";
+import { allowedGoogleEmail, googleAllowedEmails, equal, readAuthData, signAuthData } from "./auth";
 import type { Profile } from "./auth-profile";
 const googleKeys = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
 export function googleConfigured() {
-  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_ALLOWED_EMAILS?.trim());
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && googleAllowedEmails().length);
 }
 export function authOrigin() {
   const url = new URL(process.env.APP_URL || "http://localhost:3000");

@@ -36,8 +36,12 @@ export function token(profile?: Profile) {
   return signAuthData({ purpose: "session", exp: Date.now() + 7 * 86400000,
     nonce: randomBytes(16).toString("hex"), ...(profile ? { profile } : {}) });
 }
+export function googleAllowedEmails() {
+  return [process.env.GOOGLE_ALLOWED_EMAILS, process.env.GOOGLE_ADDITIONAL_ALLOWED_EMAILS]
+    .filter(Boolean).join(",").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean);
+}
 export function allowedGoogleEmail(email: string) {
-  return (process.env.GOOGLE_ALLOWED_EMAILS || "").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean).includes(email.toLowerCase());
+  return googleAllowedEmails().includes(email.toLowerCase());
 }
 export function sessionProfile(value?: string): Profile | undefined {
   const data = readAuthData(value);

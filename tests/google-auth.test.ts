@@ -2,7 +2,7 @@ import {test} from "node:test";
 import assert from "node:assert/strict";
 import {generateKeyPair, exportJWK, createLocalJWKSet, SignJWT} from "jose";
 import {beginGoogleSignIn,readGoogleFlow,safeReturnTo,verifyGoogleToken} from "../lib/google-auth";
-import {verify,sessionProfile,token,signAuthData} from "../lib/auth";
+import {verify,sessionProfile,token,signAuthData,allowedGoogleEmail} from "../lib/auth";
 process.env.AUTH_SECRET="test-secret-only-".repeat(4);
 process.env.APP_PASSWORD="test-password";
 process.env.APP_URL="https://supper.example";
@@ -50,3 +50,15 @@ test("Google JWT signature, issuer, audience, nonce, expiry, verified email and 
   process.env.GOOGLE_ALLOWED_EMAILS="member@example.com";
 });
 const awaitableDummy="not.a.valid.jwt";
+test("additional Google members preserve existing access and deny unlisted users",()=>{
+  const previous=process.env.GOOGLE_ADDITIONAL_ALLOWED_EMAILS;
+  try {
+    process.env.GOOGLE_ADDITIONAL_ALLOWED_EMAILS=" NewMember@example.com ";
+    assert.equal(allowedGoogleEmail("member@example.com"),true);
+    assert.equal(allowedGoogleEmail("newmember@example.com"),true);
+    assert.equal(allowedGoogleEmail("stranger@example.com"),false);
+  } finally {
+    if(previous===undefined) delete process.env.GOOGLE_ADDITIONAL_ALLOWED_EMAILS;
+    else process.env.GOOGLE_ADDITIONAL_ALLOWED_EMAILS=previous;
+  }
+});
