@@ -56,7 +56,7 @@ export const preferenceSchema = z.object({
     }, "Invalid timezone"),
   zip: z.string().regex(/^\d{5}$/),
   address: z.string().max(300),
-  diet: z.enum(["none", "vegetarian", "vegan"]),
+  diet: z.enum(["none", "vegetarian", "vegan", "halal", "kosher"]),
   exclusions: z.array(z.string().min(1).max(50)).max(20),
   pantry: z
     .array(
@@ -232,7 +232,7 @@ export function recipeCompatibilityIssue(recipe: Recipe, p: Preferences): string
   const s = recipe.ingredients.join(" ").toLowerCase();
   if (p.exclusions.some((x) => s.includes(x.toLowerCase()))) return "Recipe contains an excluded ingredient.";
   if (
-    p.diet !== "none" &&
+    (p.diet === "vegetarian" || p.diet === "vegan") &&
     /\b(chicken|beef|pork|bacon|sausage|fish|salmon|shrimp|anchov|gelatin|turkey)\w*\b/.test(
       s,
     )
@@ -243,6 +243,19 @@ export function recipeCompatibilityIssue(recipe: Recipe, p: Preferences): string
     /\b(cheese|parmesan|cream|milk|butter|egg|eggs|honey|yogurt|feta)\b/.test(s)
   )
     return "Recipe conflicts with the selected diet.";
+  if (p.diet === "halal" || p.diet === "kosher") {
+    if (/\b(pork|bacon|ham|prosciutto|pancetta|lard|chorizo|pepperoni|gelatin)\b/.test(s))
+      return "Recipe contains an ingredient that conflicts with the selected dietary preference.";
+    if (p.diet === "halal" && /\b(wine|beer|ale|rum|vodka|brandy|bourbon|sherry|mirin|sake|shaoxing)\b/.test(s.replace(/\b(?:red |white |rice )?wine vinegar\b/g, "vinegar")))
+      return "Recipe contains cooking alcohol; choose a recipe without it for halal preferences.";
+    if (p.diet === "kosher") {
+      if (/\b(shrimp|prawn|crab|lobster|clam|mussel|oyster|scallop|squid|octopus|catfish|sturgeon|eel|rabbit)s?\b/.test(s))
+        return "Recipe contains seafood or meat excluded by kosher preferences.";
+      const meat = /\b(chicken|beef|lamb|turkey|duck|veal|goat)\b/.test(s);
+      const dairy = /\b(milk|cream|butter|cheese|yogurt|yoghurt|parmesan|feta|ghee)\b/.test(s.replace(/\b(?:coconut|almond|oat|soy) (?:milk|cream)\b|\b(?:peanut|almond|cashew) butter\b/g, "plant ingredient"));
+      if (meat && dairy) return "Recipe combines meat and dairy; choose a different recipe for kosher preferences.";
+    }
+  }
   try {
     recipe.ingredients.forEach(purchaseIngredient);
     return undefined;

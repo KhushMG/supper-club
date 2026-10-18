@@ -122,3 +122,18 @@ test("total recipe time is capped at 60 minutes for selection and approval", () 
     assert.throws(() => approve(p), /60 minutes or less/);
   }
 });
+
+test("halal and kosher preferences persist and reject common ingredient conflicts",()=>{
+  const check=(diet:'halal'|'kosher'|'vegetarian',ingredients:string[])=>compatible({...recipes[0],minutes:30,ingredients},{...prefs(),diet});
+  for(const diet of ['halal','kosher'] as const) {
+    assert.equal(preferenceSchema.parse({...prefs(),diet}).diet,diet);
+    assert.equal(check(diet,['100 g pork']),false);
+    assert.equal(check(diet,['100 g chicken','100 g rice']),true);
+  }
+  assert.equal(check('halal',['100 ml mirin','100 g rice']),false);
+  assert.equal(check('halal',['10 ml red wine vinegar','100 g rice']),true);
+  assert.equal(check('kosher',['100 g shrimp']),false);
+  assert.equal(check('kosher',['100 g chicken','50 g cheese']),false);
+  assert.equal(check('kosher',['100 g chicken','50 ml coconut milk']),true);
+  assert.equal(check('vegetarian',['100 g chicken']),false);
+});

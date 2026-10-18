@@ -1,6 +1,9 @@
 "use client";
 import { initials, type Profile } from "@/lib/auth-profile";
 import { ingredientDisplayText } from "@/lib/recipe-display";
+import { NumberField } from "./number-field";
+import { DIET_OPTIONS, CERTIFICATION_NOTE } from "@/lib/diets";
+import { US_TIMEZONES } from "@/lib/timezones";
 import { RecipeImage } from "./recipe-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -1378,15 +1381,14 @@ export default function Dashboard() {
               <div className="form-grid">
                 <label>
                   People at the table
-                  <input
-                    type="number"
+                  <NumberField
                     min="1"
                     max="12"
                     value={preferences.servings}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       setPreferences({
                         ...preferences,
-                        servings: Number(e.target.value),
+                        servings: value,
                       })
                     }
                     required
@@ -1394,16 +1396,15 @@ export default function Dashboard() {
                 </label>
                 <label>
                   Weekly budget · all in ($)
-                  <input
-                    type="number"
+                  <NumberField
                     min="1"
                     max="1000"
                     step="0.01"
                     value={preferences.budgetCents / 100}
-                    onChange={(e) =>
+                    onValueChange={(value) =>
                       setPreferences({
                         ...preferences,
-                        budgetCents: Math.round(Number(e.target.value) * 100),
+                        budgetCents: Math.round(value * 100),
                       })
                     }
                     required
@@ -1494,16 +1495,8 @@ export default function Dashboard() {
                       })
                     }
                   >
-                    {[
-                      "America/Los_Angeles",
-                      "America/Denver",
-                      "America/Phoenix",
-                      "America/Chicago",
-                      "America/New_York",
-                      "America/Anchorage",
-                      "Pacific/Honolulu",
-                    ].map((x) => (
-                      <option key={x}>{x}</option>
+                    {US_TIMEZONES.map(({value,label}) => (
+                      <option key={value} value={value}>{label}</option>
                     ))}
                   </select>
                 </label>
@@ -1520,7 +1513,7 @@ export default function Dashboard() {
                   />
                 </label>
                 <label>
-                  Diet
+                  Dietary preference
                   <select
                     value={preferences.diet}
                     onChange={(e) =>
@@ -1530,12 +1523,11 @@ export default function Dashboard() {
                       })
                     }
                   >
-                    <option value="none">No dietary preference</option>
-                    <option value="vegetarian">Vegetarian</option>
-                    <option value="vegan">Vegan</option>
+                    {DIET_OPTIONS.map(({value,label})=><option key={value} value={value}>{label}</option>)}
                   </select>
                 </label>
               </div>
+              {(preferences.diet === "halal" || preferences.diet === "kosher") && <p className="muted">{CERTIFICATION_NOTE}</p>}
               <label>Dinner days</label>
               <div className="chips days">
                 {DAYS.map((d, i) => (
@@ -1578,15 +1570,14 @@ export default function Dashboard() {
                   </label>
                   <label>
                     Tip per delivery ($)
-                    <input
-                      type="number"
+                    <NumberField
                       min="0"
                       step="0.01"
                       value={preferences.tipCents / 100}
-                      onChange={(e) =>
+                      onValueChange={(value) =>
                         setPreferences({
                           ...preferences,
-                          tipCents: Math.round(Number(e.target.value) * 100),
+                          tipCents: Math.round(value * 100),
                         })
                       }
                     />

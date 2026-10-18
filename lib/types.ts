@@ -19,7 +19,7 @@ export type Preferences = {
   timezone: string;
   zip: string;
   address: string;
-  diet: "none" | "vegetarian" | "vegan";
+  diet: import("./diets").Diet;
   exclusions: string[];
   pantry: { name: string; quantity: number; unit: string }[];
   tipCents: number;
