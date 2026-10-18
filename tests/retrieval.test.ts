@@ -98,3 +98,17 @@ test("retrieval cleans preparation noise and known synonyms", () => {
   ]);
   assert.equal(retrievalQueries("kale  0.62)")[0], "kale");
 });
+
+test("ingredients mentioned as additions are not standalone ingredient matches", () => {
+  assert.equal(
+    parseProduct(
+      { data: [product("Peas and Carrots with Natural Sea Salt")] },
+      "salt",
+    ),
+    undefined,
+  );
+  assert.equal(
+    parseProduct({ data: [product("Rice with Ginger")] }, "ginger"),
+    undefined,
+  );
+});

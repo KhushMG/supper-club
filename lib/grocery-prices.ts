@@ -97,7 +97,11 @@ function matchingProducts(data: unknown, search?: string) {
         )
       )
         return false;
-      const words = normalizeIngredient(p.description)
+      // A seasoning mentioned after "with" is not the product being sold.
+      const primaryDescription = /\bwith\b/i.test(normalized)
+        ? p.description
+        : p.description.split(/\b(?:with|seasoned|flavored)\b/i)[0];
+      const words = normalizeIngredient(primaryDescription)
         .replace(/[^a-z0-9 ]/g, " ")
         .split(/\s+/)
         .map((t) => t.replace(/s$/, ""));
@@ -180,16 +184,14 @@ export async function retrieveIngredient(
     let match = parseProduct({ data: candidates }, ingredient);
     if (match) return { ingredient, ...match };
     if ((result.meta?.pagination.total || 0) > 50) {
-      const page = z
-        .object({ data: z.array(item).default([]) })
-        .parse(
-          await get("products", {
-            "filter.term": term,
-            "filter.locationId": storeId,
-            "filter.limit": "50",
-            "filter.start": "50",
-          }),
-        );
+      const page = z.object({ data: z.array(item).default([]) }).parse(
+        await get("products", {
+          "filter.term": term,
+          "filter.locationId": storeId,
+          "filter.limit": "50",
+          "filter.start": "50",
+        }),
+      );
       candidates.push(...page.data);
       match = parseProduct({ data: candidates }, ingredient);
       if (match) return { ingredient, ...match };
@@ -201,13 +203,11 @@ export async function retrieveIngredient(
   );
   // Some search results omit prices. Verify promising IDs at the same store.
   for (const product of matching.slice(0, 2)) {
-    const detail = z
-      .object({ data: item })
-      .parse(
-        await get("products/" + encodeURIComponent(product.productId), {
-          "filter.locationId": storeId,
-        }),
-      );
+    const detail = z.object({ data: item }).parse(
+      await get("products/" + encodeURIComponent(product.productId), {
+        "filter.locationId": storeId,
+      }),
+    );
     const match = parseProduct({ data: [detail.data] }, ingredient);
     if (match) return { ingredient, ...match };
   }
