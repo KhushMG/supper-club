@@ -47,7 +47,7 @@ test("agent uses observed tool errors to choose its next tool; planning cannot e
   };
   try {
     const r = await startPlanning(
-      { ...defaults, recurring: false },
+      { ...defaults, cuisines: ["Japanese"], recurring: false },
       "offline test",
     );
     assert.equal((await startPlanning(defaults, "double click")).id, r.id);
@@ -55,6 +55,7 @@ test("agent uses observed tool errors to choose its next tool; planning cannot e
       () => agentTool(r, "submit_test_order", {}),
       /Unknown tool/,
     );
+    assert.deepEqual((await readState()).preferences.cuisines, ["Japanese"]);
     await driveAgent(r.id);
     const saved = await getRun(r.id);
     assert.equal(saved?.status, "failed");

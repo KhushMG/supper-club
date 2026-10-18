@@ -80,6 +80,7 @@ export default function Dashboard() {
     [preferences, setPreferences] = useState<Preferences>(defaults),
     [feedback, setFeedback] = useState(""),
     [pantryText, setPantryText] = useState("");
+  const preferencesLoaded = useRef(false);
   const refresh = useCallback(async () => {
     const r = await fetch("/api/state", { cache: "no-store" });
     if (r.status === 401) {
@@ -89,15 +90,18 @@ export default function Dashboard() {
     const j = await r.json();
     if (!r.ok) throw new Error(j.error);
     setData(j);
-    setPreferences(j.preferences);
-    setPantryText(
-      j.preferences.pantry
-        .map(
-          (x: { name: string; quantity: number; unit: string }) =>
-            `${x.name}, ${x.quantity}, ${x.unit}`,
-        )
-        .join("\n"),
-    );
+    if (!preferencesLoaded.current) {
+      preferencesLoaded.current = true;
+      setPreferences(j.preferences);
+      setPantryText(
+        j.preferences.pantry
+          .map(
+            (x: { name: string; quantity: number; unit: string }) =>
+              `${x.name}, ${x.quantity}, ${x.unit}`,
+          )
+          .join("\n"),
+      );
+    }
   }, []);
   const act = useCallback(
     async (path: string, body: unknown, label = path) => {
@@ -530,6 +534,15 @@ export default function Dashboard() {
               Edit preferences
             </button>
           </div>
+          {data.agentRuns?.[0]?.kind === "planning" &&
+            data.agentRuns[0].status === "failed" &&
+            plan && (
+              <div className="alert error" role="alert">
+                The latest dinner search didn’t finish. The meals below are your
+                previously saved plan. Your cuisine choices are still selected;
+                try finding dinners again.
+              </div>
+            )}
           {error && (
             <div className="alert error" role="alert">
               {error}
@@ -555,10 +568,6 @@ export default function Dashboard() {
               }
             >
               <div className="loading-intro" role="status">
-                <div className="loading-emblem">
-                  <LoaderCircle className="spin" size={70} aria-hidden="true" />
-                  <ChefHat size={28} aria-hidden="true" />
-                </div>
                 <p className="eyebrow">
                   {placingOrder
                     ? "ONE LESS THING ON YOUR PLATE"
@@ -1326,7 +1335,7 @@ export default function Dashboard() {
               }}
             >
               <label>Cuisines you’re craving</label>
-              <div className="chips">
+              <div className="chips cuisine-chips">
                 {CUISINES.map((c) => (
                   <button
                     type="button"
@@ -1344,7 +1353,14 @@ export default function Dashboard() {
                       })
                     }
                   >
-                    {preferences.cuisines.includes(c) && <Check size={13} />}{" "}
+                    <Check
+                      size={13}
+                      style={{
+                        visibility: preferences.cuisines.includes(c)
+                          ? "visible"
+                          : "hidden",
+                      }}
+                    />{" "}
                     {c}
                   </button>
                 ))}

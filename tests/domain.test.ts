@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   defaults,
   ingredient,
+  purchaseIngredient,
   makePlan,
   approve,
   quote,
@@ -22,9 +23,14 @@ test("fractions and unit conversions are numeric and measured", () => {
   assert.equal(ingredient("2 cloves garlic").quantity, 2);
   assert.throws(() => ingredient("salt to taste"));
 });
-test("unmeasured recipes cannot silently invent grocery quantities", () => {
+test("unmeasured ingredients remain usable for whole-package purchasing", () => {
   const r = { ...recipes[0], ingredients: ["salt to taste"] };
-  assert.equal(compatible(r, prefs()), false);
+  assert.equal(compatible(r, prefs()), true);
+  assert.deepEqual(purchaseIngredient("salt to taste"), {
+    name: "salt",
+    unit: "package",
+    quantity: 1,
+  });
 });
 test("whole packages and pantry subtraction", () => {
   const r = { ...recipes[0], servings: 2, ingredients: ["500 g rice"] };

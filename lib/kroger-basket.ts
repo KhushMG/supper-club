@@ -1,5 +1,5 @@
 import { prepareSimulation } from "./simulation";
-import { ingredient } from "./domain";
+import { ingredient, purchaseIngredient } from "./domain";
 import { livePrices, type LivePrices } from "./grocery-prices";
 import type { Plan } from "./types";
 export type RetailLine = {
@@ -41,7 +41,7 @@ export function retailIngredient(raw: string) {
     if (volume) x.quantity *= 29.5735;
     return x;
   }
-  const x = ingredient(raw);
+  const x = purchaseIngredient(raw);
   // Cloves and bunches cannot be equated with a retail bulb or bag.
   if (/^\S+\s+cloves?\b/i.test(raw)) x.unit = "clove";
   if (/^\S+\s+bunch(?:es)?\b/i.test(raw)) x.unit = "bunch";

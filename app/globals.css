@@ -1840,3 +1840,18 @@ textarea {
   margin: 0;
   font-size: 1.25rem;
 }
+
+.preferences-modal {
+  width: 1000px;
+}
+.cuisine-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+.cuisine-chips button {
+  flex: 1 0 auto;
+  white-space: nowrap;
+  justify-content: center;
+  min-height: 42px;
+}

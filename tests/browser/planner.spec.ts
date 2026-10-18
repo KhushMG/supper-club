@@ -153,6 +153,7 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
     defaults.days.length,
   );
   await expect(page.locator(".kitchen-toast")).toHaveCount(0);
+  await expect(page.locator(".loading-emblem")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(
@@ -205,4 +206,41 @@ test("page refresh renders only the loader until data is ready", async ({
   await expect.poll(() => !!release).toBe(true);
   release!();
   await expect(page.locator(".app-shell")).toBeVisible();
+});
+
+test("cuisine choices survive refresh and stay on one row", async ({
+  page,
+  request,
+}) => {
+  const state = await (await request.get("/api/state")).json();
+  state.preferences = { ...defaults, cuisines: ["Japanese"] };
+  state.agentRuns = [];
+  await page.route("**/api/state", (route) => route.fulfill({ json: state }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Edit preferences" }).click();
+  const japanese = page.getByRole("button", { name: "Japanese", exact: true });
+  const thai = page.getByRole("button", { name: "Thai", exact: true });
+  await expect(japanese).toHaveAttribute("aria-pressed", "true");
+  await thai.click();
+  await page.getByRole("button", { name: "Close preferences" }).click();
+  await page.getByRole("button", { name: "Refresh plan" }).click();
+  await page.getByRole("button", { name: "Edit preferences" }).click();
+  await expect(thai).toHaveAttribute("aria-pressed", "true");
+  await expect(japanese).toHaveAttribute("aria-pressed", "true");
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    const rows = await page
+      .locator(".cuisine-chips button")
+      .evaluateAll(
+        (buttons) =>
+          new Set(buttons.map((b) => Math.round(b.getBoundingClientRect().top)))
+            .size,
+      );
+    expect(rows).toBe(1);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
 });

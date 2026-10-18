@@ -190,6 +190,28 @@ export function ingredient(raw: string) {
     throw new Error("Invalid ingredient: " + raw);
   return { name, unit, quantity: q * factor };
 }
+// Unmeasured publisher ingredients buy one whole package; never invent a recipe quantity.
+export function purchaseIngredient(raw: string) {
+  try {
+    return ingredient(raw);
+  } catch (error) {
+    const name = raw
+      .replace(/\([^)]*\)/g, "")
+      .replace(/,.*$/, "")
+      .replace(
+        /\b(to taste|as needed|for serving|for garnish|optional)\b/gi,
+        "",
+      )
+      .trim();
+    if (
+      !/^[a-z][a-z\s'-]*$/i.test(name) ||
+      name.length < 2 ||
+      name.length > 100
+    )
+      throw error;
+    return { ...ingredient("1 " + name), unit: "package", quantity: 1 };
+  }
+}
 export function compatible(recipe: Recipe, p: Preferences) {
   const s = recipe.ingredients.join(" ").toLowerCase();
   if (p.exclusions.some((x) => s.includes(x.toLowerCase()))) return false;
@@ -206,7 +228,7 @@ export function compatible(recipe: Recipe, p: Preferences) {
   )
     return false;
   try {
-    recipe.ingredients.forEach(ingredient);
+    recipe.ingredients.forEach(purchaseIngredient);
     return true;
   } catch {
     return false;
@@ -224,7 +246,7 @@ export function sandboxBasket(
   >();
   for (const { recipe } of meals)
     for (const raw of recipe.ingredients) {
-      const x = ingredient(raw);
+      const x = purchaseIngredient(raw);
       if (x.name === "water") continue;
       const key = x.name + "|" + x.unit;
       const existing = map.get(key);
