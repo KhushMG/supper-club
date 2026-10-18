@@ -11,12 +11,14 @@ import {
 import { getRun, saveRun } from "../lib/agent-runs";
 import {
   cached,
+  cacheKey,
   cachePut,
   reserveCall,
   usageSummary,
 } from "../lib/agent-store";
 import { defaults, makePlan, approve } from "../lib/domain";
 import { recipes } from "../lib/recipes";
+import { prepareSimulation } from "../lib/simulation";
 import { readState, database, mutate } from "../lib/db";
 process.env.TURSO_DATABASE_URL =
   "file:" + join(tmpdir(), "ai-agent-" + crypto.randomUUID() + ".db");
@@ -299,6 +301,47 @@ test("a valid proposal survives the context size limit without a paid request", 
   const proposal = (await readState()).plans.find(p => p.id === saved?.planId)!;
   assert.equal(proposal.status, "draft");
   assert.equal(proposal.approvedRevision, undefined);
+});
+test("recipe search reports fetched-but-rejected pages and keeps their publishers available", async () => {
+  const run = await startPlanning(defaults, "diagnose invalid sources");
+  const slow = { ...recipes[0], source: "https://food.example/slow", minutes: 1470 };
+  const broken = { ...recipes[0], source: "https://food.example/broken", minutes: 30, ingredients: ["0"] };
+  for (const recipe of [slow, broken]) {
+    await cachePut("recipe-v2:" + cacheKey({url: recipe.source, cuisine: defaults.cuisines[0]}), recipe, 60000);
+  }
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({output:[{type:"message", content:[{text:JSON.stringify({recipes:[slow,broken].map(r=>({url:r.source,cuisine:defaults.cuisines[0]}))})}]}]});
+  try {
+    await assert.rejects(() => agentTool(run, "search_recipes", {cuisine:defaults.cuisines[0],query:"quick dinner rejection fixture"}), error => {
+      assert.match(String(error), /1470 minutes/);
+      assert.match(String(error), /Cannot read a published ingredient/);
+      return true;
+    });
+    assert.deepEqual(run.unavailablePublishers, []);
+    assert.equal(run.catalog.length, 0);
+  } finally {
+    globalThis.fetch = original;
+    run.status = "failed";
+    await saveRun(run);
+  }
+});
+test("a within-budget test proposal with missing retailer matches saves with mock costs disclosed", async () => {
+  const run = await startPlanning({ ...defaults, budgetCents: 50000 }, "simulation missing prices");
+  const plan = makePlan(recipes, run.preferences, run.week);
+  plan.retailBasket = {
+    environment: "production", storeId: "test", storeName: "Fixture",
+    fetchedAt: new Date().toISOString(), subtotalCents: 0, unresolved: 1, finalTotalCents: null,
+    batches: plan.batches.map(b => ({batchId: b.id, subtotalCents: 0, lines: [{name: "capers", unit:"each",required:1,pantryUsed:0,issue:"No suitable product found"}]})),
+  };
+  prepareSimulation(plan);
+  run.candidate = plan;
+  const result = await agentTool(run, "save_proposal", {summary:"Test proposal includes labeled mock caper costs, delivery and tax."});
+  assert.equal((result as {saved:boolean}).saved, true);
+  const saved = (await readState()).plans.find(p=>p.id===run.planId)!;
+  assert.equal(saved.simulationQuote?.mockItemsCents, 500);
+  assert.equal(saved.status, "draft");
+  assert.equal(saved.approvedRevision, undefined);
+  await saveRun(run);
 });
 test("server cache expires and requests can exceed 20 per day while enforcing the lifetime cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);

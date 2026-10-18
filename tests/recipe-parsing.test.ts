@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseRecipePage, durationMinutes } from "../lib/recipes";
-import { ingredient, purchaseIngredient } from "../lib/domain";
+import { ingredient, purchaseIngredient, recipeCompatibilityIssue, defaults } from "../lib/domain";
 const recipe = {
   "@type": "Recipe",
   name: "Rice &amp; beans",
@@ -94,4 +94,12 @@ test("reported total cannot hide a longer prep plus cook duration", () => {
     }),
   );
   assert.equal(r.minutes, 75);
+});
+
+test("rejected recipes report actual duration and ingredient errors to the planner", () => {
+  const tooSlow = parse(page({ ...recipe, totalTime: "P1DT30M" }));
+  assert.match(recipeCompatibilityIssue(tooSlow, defaults)!, /1470 minutes/);
+  const broken = parse(page({ ...recipe, recipeIngredient: ["0"] }));
+  assert.match(recipeCompatibilityIssue(broken, defaults)!, /Cannot read a published ingredient/);
+  assert.equal(recipeCompatibilityIssue(parse(page(recipe)), defaults), undefined);
 });

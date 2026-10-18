@@ -11,3 +11,5 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 ## Required verification
 
 Run browser end-to-end tests yourself with `npm run test:e2e` for every change before deployment, alongside `npm run typecheck` and `npm test`. For agent changes, cover realistic tool payloads and failure/recovery paths with regression tests. Use mocked external services to conserve API credits, then perform a read-only production browser smoke test after deployment.
+
+For recipe-search or agent-planning fixes, also run `npm run test:live` against the updated app (`LIVE_TEST_URL` can target local Next.js). This opt-in Chrome test makes real API calls and creates one draft, verifies new retrieved meals and the final approval gate, and never approves or pays. Inspect failed live traces and fix them before reporting success; mocked UI tests alone do not validate retrieval. Conserve credits by reusing cached results and avoid redundant successful live runs.

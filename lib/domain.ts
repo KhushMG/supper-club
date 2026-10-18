@@ -227,28 +227,31 @@ export function withinCookingLimit(recipe: Recipe) {
     recipe.minutes <= MAX_RECIPE_MINUTES
   );
 }
-export function compatible(recipe: Recipe, p: Preferences) {
-  if (!withinCookingLimit(recipe)) return false;
+export function recipeCompatibilityIssue(recipe: Recipe, p: Preferences): string | undefined {
+  if (!withinCookingLimit(recipe)) return `Total recipe time is ${recipe.minutes} minutes; maximum is ${MAX_RECIPE_MINUTES}.`;
   const s = recipe.ingredients.join(" ").toLowerCase();
-  if (p.exclusions.some((x) => s.includes(x.toLowerCase()))) return false;
+  if (p.exclusions.some((x) => s.includes(x.toLowerCase()))) return "Recipe contains an excluded ingredient.";
   if (
     p.diet !== "none" &&
     /\b(chicken|beef|pork|bacon|sausage|fish|salmon|shrimp|anchov|gelatin|turkey)\w*\b/.test(
       s,
     )
   )
-    return false;
+    return "Recipe conflicts with the selected diet.";
   if (
     p.diet === "vegan" &&
     /\b(cheese|parmesan|cream|milk|butter|egg|eggs|honey|yogurt|feta)\b/.test(s)
   )
-    return false;
+    return "Recipe conflicts with the selected diet.";
   try {
     recipe.ingredients.forEach(purchaseIngredient);
-    return true;
-  } catch {
-    return false;
+    return undefined;
+  } catch (error) {
+    return `Cannot read a published ingredient: ${error instanceof Error ? error.message : "invalid ingredient"}`;
   }
+}
+export function compatible(recipe: Recipe, p: Preferences) {
+  return recipeCompatibilityIssue(recipe, p) === undefined;
 }
 // Deliberately synthetic catalog. No figure from this function is represented as a live retail quote.
 export function sandboxBasket(

@@ -19,7 +19,9 @@ test("web discovery is query-driven, cached by feedback, and bounded", async () 
     assert.equal(body.text.format.strict, true);
     assert.equal(body.tools[0].type, "web_search");
     if (calls < 3) assert.equal(body.tools[0].filters, undefined);
-    assert.match(body.input, /noodles/);
+    assert.equal(body.input, "dinner recipe");
+    assert.doesNotMatch(body.input, /Preferences|recentMeals|[{}]/);
+    assert.match(body.instructions, /noodles/);
     return Response.json({
       output: [
         {
