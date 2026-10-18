@@ -45,6 +45,10 @@ type Data = State & {
     localAccess: boolean;
   };
 };
+const clockLabel = (time: string) => {
+  const [hour, minute] = time.split(":");
+  return `${Number(hour) % 12 || 12}:${minute} ${Number(hour) >= 12 ? "PM" : "AM"}`;
+};
 const prettyDate = (s: string) =>
   new Date(s + "T12:00:00").toLocaleDateString("en-US", {
     month: "short",
@@ -378,7 +382,9 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <div className="overview-item">
-                  <span className="stat">{selected.cookingTime}</span>
+                  <span className="stat">
+                    {clockLabel(selected.cookingTime)}
+                  </span>
                   <span>
                     aprons on
                     <br />
@@ -686,7 +692,10 @@ export default function Dashboard() {
                           Live product prices · {plan.livePrices.storeName}
                         </h3>
                         <small>
-                          {new Date(plan.livePrices.fetchedAt).toLocaleString()}
+                          {new Date(plan.livePrices.fetchedAt).toLocaleString(
+                            "en-US",
+                            { hour12: true },
+                          )}
                         </small>
                       </div>
                       <p className="muted">
@@ -772,6 +781,7 @@ export default function Dashboard() {
                                 weekday: "short",
                                 hour: "numeric",
                                 minute: "2-digit",
+                                hour12: true,
                               })}
                             </b>
                           </div>
@@ -784,6 +794,7 @@ export default function Dashboard() {
                                 day: "numeric",
                                 hour: "numeric",
                                 minute: "2-digit",
+                                hour12: true,
                               })}
                             </b>
                           </div>
@@ -899,7 +910,10 @@ export default function Dashboard() {
                   <p className="muted">
                     {data?.integrations.lastJobAt
                       ? "Last scheduled runner: " +
-                        new Date(data.integrations.lastJobAt).toLocaleString()
+                        new Date(data.integrations.lastJobAt).toLocaleString(
+                          "en-US",
+                          { hour12: true },
+                        )
                       : "Scheduled runner has not checked in yet. Set up the cron endpoint to run while the app is closed."}
                   </p>
                 </>
@@ -923,7 +937,11 @@ export default function Dashboard() {
                           <span className="activity-dot" />
                           <div>
                             {e.message}
-                            <small>{new Date(e.at).toLocaleString()}</small>
+                            <small>
+                              {new Date(e.at).toLocaleString("en-US", {
+                                hour12: true,
+                              })}
+                            </small>
                           </div>
                         </div>
                       ))
@@ -1073,20 +1091,80 @@ export default function Dashboard() {
                     required
                   />
                 </label>
-                <label>
-                  Start cooking at
-                  <input
-                    type="time"
-                    value={preferences.cookingTime}
-                    onChange={(e) =>
-                      setPreferences({
-                        ...preferences,
-                        cookingTime: e.target.value,
-                      })
-                    }
-                    required
-                  />
-                </label>
+                <fieldset className="cooking-time">
+                  <legend>Start cooking at</legend>
+                  <div>
+                    <select
+                      aria-label="Cooking hour"
+                      value={
+                        Number(preferences.cookingTime.split(":")[0]) % 12 || 12
+                      }
+                      onChange={(e) => {
+                        const h = Number(preferences.cookingTime.split(":")[0]);
+                        setPreferences({
+                          ...preferences,
+                          cookingTime:
+                            String(
+                              (Number(e.target.value) % 12) +
+                                (h >= 12 ? 12 : 0),
+                            ).padStart(2, "0") +
+                            ":" +
+                            preferences.cookingTime.split(":")[1],
+                        });
+                      }}
+                    >
+                      {Array.from({ length: 12 }, (_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                    <span>:</span>
+                    <select
+                      aria-label="Cooking minute"
+                      value={preferences.cookingTime.split(":")[1]}
+                      onChange={(e) =>
+                        setPreferences({
+                          ...preferences,
+                          cookingTime:
+                            preferences.cookingTime.split(":")[0] +
+                            ":" +
+                            e.target.value,
+                        })
+                      }
+                    >
+                      {Array.from({ length: 60 }, (_, i) => (
+                        <option key={i} value={String(i).padStart(2, "0")}>
+                          {String(i).padStart(2, "0")}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="Cooking AM or PM"
+                      value={
+                        Number(preferences.cookingTime.split(":")[0]) >= 12
+                          ? "PM"
+                          : "AM"
+                      }
+                      onChange={(e) =>
+                        setPreferences({
+                          ...preferences,
+                          cookingTime:
+                            String(
+                              (Number(preferences.cookingTime.split(":")[0]) %
+                                12) +
+                                (e.target.value === "PM" ? 12 : 0),
+                            ).padStart(2, "0") +
+                            ":" +
+                            preferences.cookingTime.split(":")[1],
+                        })
+                      }
+                    >
+                      <option>AM</option>
+                      <option>PM</option>
+                    </select>
+                  </div>
+                </fieldset>
                 <label>
                   Timezone
                   <select
