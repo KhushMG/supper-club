@@ -85,12 +85,24 @@ export function retailRequirements(plan: Plan): RetailBasket["batches"] {
 export function packageMeasure(
   size: string,
 ): { unit: string; quantity: number } | undefined {
-  const match = size
-    .toLowerCase()
-    .trim()
-    .match(
-      /^(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|oz|lb|lbs|g|kg|ml|l|ct|count|each)\.?$/,
-    );
+  const text = size.toLowerCase().trim();
+  // Explicit each-sized multipacks; the price covers the whole pack.
+  const multiple = text.match(
+    /^(\d+)\s*(?:ct|pk|pack)\s*\/\s*(\d+(?:\.\d+)?\s*(?:fl\.?\s*oz|oz|lb|g|ml|l))(?:\s+each)?$/,
+  );
+  if (multiple) {
+    const inner = packageMeasure(multiple[2]);
+    return inner
+      ? { ...inner, quantity: inner.quantity * Number(multiple[1]) }
+      : undefined;
+  }
+  const sticks = text.match(
+    /^\d+\s*sticks?\s*\/\s*(\d+(?:\.\d+)?\s*(?:oz|g|lb))$/,
+  );
+  if (sticks) return packageMeasure(sticks[1]);
+  const match = text.match(
+    /^(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|oz|lb|lbs|g|kg|ml|l|ct|count|each)\.?$/,
+  );
   if (!match || Number(match[1]) <= 0) return;
   const unit = match[2].replace(/[.\s]/g, "");
   const units: Record<string, [string, number]> = {
