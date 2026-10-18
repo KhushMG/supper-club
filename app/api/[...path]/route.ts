@@ -1,3 +1,4 @@
+import { pricePlan } from "@/lib/kroger-basket";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readState, mutate } from "@/lib/db";
@@ -26,7 +27,7 @@ import {
   testStripe,
   acceptPayment,
 } from "@/lib/stripe";
-import { livePrices, krogerEnvironment } from "@/lib/grocery-prices";
+import { krogerEnvironment } from "@/lib/grocery-prices";
 import { runJobs } from "@/lib/jobs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -172,7 +173,9 @@ async function handle(req: Request) {
         week,
         feedback,
         found.mode,
+        true,
       );
+      await pricePlan(plan);
       await mutate((s) => {
         const current = s.plans.find((p) => p.week === week);
         if (
@@ -213,7 +216,7 @@ async function handle(req: Request) {
           recipeId: z.string().max(200),
         })
         .parse(body);
-      await mutate((s) => {
+      const revised = await mutate((s) => {
         const p = s.plans.find((p) => p.id === args.planId);
         if (!p || p.revision !== args.revision)
           throw new Error("Plan changed. Refresh first.");
@@ -238,7 +241,18 @@ async function handle(req: Request) {
         meal.recipe = recipe;
         p.revision++;
         quote(p);
-        log(s, "Meal swapped. Review and approve the revised week.");
+        p.pricingSource = "kroger";
+        log(s, "Meal swapped. Kroger prices are being refreshed.");
+        return structuredClone(p);
+      });
+      await pricePlan(revised);
+      await mutate((s) => {
+        const index = s.plans.findIndex(
+          (p) => p.id === revised.id && p.revision === revised.revision,
+        );
+        if (index < 0)
+          throw new Error("Plan changed while pricing. Refresh prices again.");
+        s.plans[index] = revised;
       });
       return json({ ok: true });
     }
@@ -294,18 +308,43 @@ async function handle(req: Request) {
     }
     if (path === "groceries/prices") {
       const planId = id.parse(body.planId);
-      const s = await readState();
-      const plan = s.plans.find((p) => p.id === planId);
+      const state = await readState();
+      const plan = state.plans.find((p) => p.id === planId);
       if (!plan) throw new Error("Plan not found.");
-      const prices = await livePrices(plan);
+      if (
+        state.payments.some(
+          (p) => p.planId === planId && ["open", "creating"].includes(p.status),
+        )
+      )
+        throw new Error(
+          "Resolve the open Stripe checkout before repricing this plan.",
+        );
+      if (plan.batches.some((b) => b.orderId))
+        throw new Error(
+          "Ordered plans retain their original pricing. Create a new week for Kroger pricing.",
+        );
+      const revision = plan.revision;
+      await pricePlan(plan);
       await mutate((s) => {
-        const p = s.plans.find((p) => p.id === planId);
-        if (!p || p.revision !== plan.revision)
-          throw new Error("Plan changed. Refresh before checking prices.");
-        p.livePrices = prices;
+        const index = s.plans.findIndex(
+          (p) => p.id === planId && p.revision === revision,
+        );
+        if (
+          index < 0 ||
+          s.plans[index].batches.some((b) => b.orderId) ||
+          s.payments.some(
+            (p) =>
+              p.planId === planId && ["open", "creating"].includes(p.status),
+          )
+        )
+          throw new Error(
+            "Plan changed while pricing. Refresh before trying again.",
+          );
+        plan.revision++;
+        s.plans[index] = plan;
         log(
           s,
-          `Kroger ${prices.environment} prices retrieved. These are product candidates, not a final checkout quote.`,
+          "Shopping list rebuilt using Kroger products and package prices. Purchases remain held until the final all-in quote is available.",
         );
       });
       return json({ ok: true });

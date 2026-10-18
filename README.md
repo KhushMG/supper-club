@@ -1,6 +1,6 @@
 # Supper Club
 
-A standard **Next.js App Router** application: cuisine preferences → actual published recipes → weekly approval → budget-checked sandbox grocery orders. Includes **Stripe test Checkout**, persistent household state, meal swaps, pantry quantities, delivery scheduling, and an activity log. No Edamam or paid recipe-data subscription.
+A standard **Next.js App Router** application: cuisine preferences → actual published recipes → ingredient quantities → Kroger product matching and package prices → final-quote hold. Includes **Stripe test Checkout**, persistent household state, meal swaps, pantry quantities, delivery scheduling, and an activity log. No Edamam or paid recipe-data subscription.
 
 ## Current deployment
 
@@ -22,13 +22,13 @@ npm run dev
 
 Open http://localhost:3000. A local SQLite database is created automatically. With no password configured, **development only** skips sign-in. Production always requires a household password and signed session.
 
-Build a plan, approve it, open **Deliveries**, and click **Simulate orders now** to exercise the full grocery flow without money or credentials. Defaults are a $200 weekly all-in cap, two servings, and seven dinners; edit these in Preferences. All grocery prices, delivery fees, taxes, and delivery results are visibly labeled synthetic sandbox data.
+Build a plan, then open **Grocery list**. Plan generation, meal swaps, and scheduled drafts query Kroger automatically. The shopping list shows matched products, retailer package prices, required package counts when units are compatible, and unresolved items. There is no synthetic-price fallback. Defaults are a $200 weekly all-in cap, two servings, and seven dinners.
 
 ## Stripe test transaction
 
 1. In your Stripe dashboard’s test mode/sandbox, copy the **secret** test key into `STRIPE_SECRET_KEY` in `.env.local`. It must start with `sk_test_`; live keys are rejected. Do not put it in a `NEXT_PUBLIC_` variable.
 2. Restart the development server.
-3. Generate and approve a dinner plan. Open **Deliveries → Try Stripe checkout**.
+3. Stripe Checkout remains available for legacy approved sandbox plans. New Kroger-priced plans are held because product prices do not include a final delivery/tax/fee quote. Existing paid receipts remain available.
 4. At Stripe’s hosted checkout, use `4242 4242 4242 4242`, any future expiry, and any three-digit CVC. Use `4000 0000 0000 0002` for a decline scenario.
 5. On return, the server retrieves the Checkout Session from Stripe and verifies the saved attempt ID, plan/revision, amount, USD currency, and `livemode=false` before recording payment. A success query parameter alone never marks it paid.
 
@@ -66,7 +66,7 @@ This repository includes an hourly GitHub Actions scheduler. Set repository Acti
 
 Alternatively, if your Vercel plan supports hourly cron, replace `vercel.json` with `vercel.cron.example.json` and redeploy. The default config deliberately does not require a paid cron tier. Any external scheduler that securely supplies the Authorization header also works. A configured secret alone does not mean scheduling is active; **Activity/Deliveries shows the last successful runner check-in**.
 
-The runner drafts the next Monday–Sunday plan Friday after 9 a.m. in the household’s IANA timezone, with weekend catch-up. It never approves the draft. Approved batches submit 24 hours before the target delivery time; arrival targets are one hour before cooking. Batches cover at most three days. Missed delivery windows are held for review. Repeated jobs do not create duplicate sandbox orders.
+The runner drafts the next Monday–Sunday plan Friday after 9 a.m. in the household’s IANA timezone, with weekend catch-up. It never approves the draft. Legacy sandbox approved batches submit 24 hours before the target delivery time; Kroger-priced plans cannot submit without a final quote; arrival targets are one hour before cooking. Batches cover at most three days. Missed delivery windows are held for review. Repeated jobs do not create duplicate sandbox orders.
 
 ### Other deployment options
 
@@ -82,7 +82,11 @@ For broader browsing and free-text feedback, set `OPENAI_API_KEY` and optionally
 
 ## Real store price lookup
 
-Create a Kroger developer application with Products API access and set `KROGER_CLIENT_ID` and `KROGER_CLIENT_SECRET` on the server. In **Grocery list**, click **Check live prices**. The adapter resolves a store near the household ZIP, queries the official Products API with its location ID, and displays timestamped product candidates, package labels, and regular prices. Missing prices are never invented. These read-only product results do not replace the all-in sandbox budget or authorize checkout; product matching, stock, fees, and final-charge bounds must be verified before live grocery purchasing.
+Create a Kroger developer application with Products API access and set `KROGER_CLIENT_ID` and `KROGER_CLIENT_SECRET` on the server. Generation, swaps, and scheduled drafts populate the shopping list through `lib/kroger-basket.ts` and `lib/grocery-prices.ts`. **Refresh Kroger prices** reprices an existing unsubmitted plan and invalidates purchase approval. Open Stripe attempts and submitted orders block repricing.
+
+Ingredient quantities are scaled to servings, grouped by delivery, and reduced by pantry stock. Container weights are preserved. Product searches require matching ingredient terms. Package counts round up using Kroger's actual package size and regular price. Incompatible dimensions (for example, recipe cups versus a product sold by weight), unknown package sizes, and missing matches remain unresolved; no density or price is guessed. Product matches still need suitability/allergen review. Cross-delivery surplus reuse is not assumed.
+
+The displayed budget is the subtotal of resolved lines only. Missing products and delivery/tax/tip charges are explicitly pending. Product-only amounts cannot authorize orders or Stripe payments. Certification prices are labeled test data. No synthetic item amounts appear in the shopping list, and failed lookups cannot fall back to sandbox prices.
 
 Set `KROGER_ENVIRONMENT=certification` for credentials issued for Certification APIs. This uses `api-ce.kroger.com` and labels results as test data. Production credentials require `KROGER_ENVIRONMENT=production` (the default). Certification credentials do not provide real store prices or enable checkout.
 
@@ -94,7 +98,7 @@ Reference: [Kroger’s official public API collection](https://www.postman.com/k
 - Stripe test Checkout is implemented, but a real Stripe test transaction needs your test secret key. No account credentials are included.
 - Dietary exclusions are conservative recipe-text filters, not verified allergen or cross-contamination guarantees. Live checkout stays disabled.
 - Meal changes after approval require reapproval. Once grocery submissions or checkout attempts exist, replacement is blocked rather than risking duplicate commitments.
-- Price calculations use integer cents and whole sandbox packages. Grocery subtotal, fees, taxes, and selected tips all count against the cap. Spending checks run inside serialized database transactions, not in the language model.
+- Kroger item totals use integer cents and whole retailer packages. A partial product subtotal is never treated as an all-in budget quote. Legacy sandbox logic is retained for historical records and isolated tests only.
 
 ## Checks
 

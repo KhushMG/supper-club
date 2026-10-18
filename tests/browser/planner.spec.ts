@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-test("plan, swap, approve, sandbox orders, responsive layout", async ({
+test("plan, swap, incomplete Kroger pricing holds purchases, responsive layout", async ({
   page,
 }) => {
   await page.goto("/");
@@ -10,32 +10,21 @@ test("plan, swap, approve, sandbox orders, responsive layout", async ({
   await page.getByLabel("Weekly budget · all in ($)").fill("500");
   await page.getByRole("button", { name: "Build my dinner plan" }).click();
   await expect(
-    page.getByRole("button", { name: "Approve this week" }),
+    page.getByRole("button", { name: "Awaiting final quote" }),
   ).toBeVisible({ timeout: 60000 });
   await page.getByRole("button", { name: "Swap Monday dinner" }).click();
   await page.locator(".swap-list button").first().click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.getByRole("button", { name: "Approve this week" }).click();
   await expect(
-    page.getByRole("heading", { name: "Your week is approved." }),
-  ).toBeVisible();
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({
-    path: "/private/tmp/supper-desktop.png",
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "Deliveries", exact: true }).click();
-  await page.getByRole("button", { name: "Simulate orders now" }).click();
-  await expect(page.locator(".delivery-card .status").first()).toHaveText(
-    "submitted",
-  );
-  await page.getByRole("button", { name: "Simulate orders now" }).click();
-  await page.getByRole("button", { name: "Activity", exact: true }).click();
+    page.getByRole("button", { name: "Awaiting final quote" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Grocery list", exact: true }).click();
   await expect(
-    page.getByText(
-      "Simulated 0 grocery order(s). No real groceries purchased.",
-    ),
+    page.getByText("Kroger pricing is unavailable.", { exact: false }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("columnheader", { name: "Sandbox cost" }),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "This week", exact: false })
     .first()

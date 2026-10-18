@@ -1,3 +1,4 @@
+import { pricePlan } from "./kroger-basket";
 import { mutate, readState } from "./db";
 import { discover } from "./recipes";
 import { nextMonday, makePlan, processDue, log } from "./domain";
@@ -30,7 +31,8 @@ export async function runJobs() {
       s.lastGeneratedWeek !== week
     ) {
       const result = await discover(p, "");
-      const plan = makePlan(result.recipes, p, week, "", result.mode);
+      const plan = makePlan(result.recipes, p, week, "", result.mode, true);
+      await pricePlan(plan);
       await mutate((s) => {
         if (!s.plans.some((x) => x.week === week)) {
           s.plans.unshift(plan);

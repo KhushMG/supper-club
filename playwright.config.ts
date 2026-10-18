@@ -6,7 +6,7 @@ export default defineConfig({
   timeout: 90000,
   workers: 1,
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: "http://localhost:3100",
     launchOptions: {
       executablePath:
         process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ||
@@ -15,10 +15,17 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run dev -- --hostname 127.0.0.1",
-    url: "http://localhost:3000",
+    command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
+    url: "http://localhost:3100",
     reuseExistingServer: false,
     env: {
+      APP_URL: "http://localhost:3100",
+      APP_PASSWORD: "",
+      AUTH_SECRET: "",
+      OPENAI_API_KEY: "",
+      KROGER_CLIENT_ID: "",
+      KROGER_CLIENT_SECRET: "",
+      TURSO_AUTH_TOKEN: "",
       TURSO_DATABASE_URL: `file:/private/tmp/supper-e2e-${Date.now()}.db`,
     },
     timeout: 120000,

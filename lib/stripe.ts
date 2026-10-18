@@ -54,6 +54,10 @@ export async function createCheckout(
       plan.approvedRevision !== plan.revision
     )
       throw new Error("Approve this plan before starting checkout.");
+    if (plan.pricingSource === "kroger")
+      throw new Error(
+        "A final all-in Kroger quote is required before checkout.",
+      );
     if (plan.totalCents > plan.preferences.budgetCents || plan.totalCents < 50)
       throw new Error("Plan total cannot be charged.");
     const existing = state.payments.find(

@@ -33,11 +33,55 @@ const item = z.object({
     )
     .optional(),
 });
-export function parseProduct(data: unknown) {
+export function parseProduct(data: unknown, search?: string) {
   const parsed = z.object({ data: z.array(item) }).parse(data);
-  const product = parsed.data.find((p) =>
-    p.items?.some((i) => i.price?.regular !== undefined),
-  );
+  const tokens = search
+    ?.toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(
+      (t) =>
+        t &&
+        ![
+          "and",
+          "with",
+          "fresh",
+          "dried",
+          "ground",
+          "chopped",
+          "diced",
+          "minced",
+          "canned",
+        ].includes(t),
+    );
+  const product = parsed.data.find((p) => {
+    const description = p.description
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]/g, " ")
+      .split(/\s+/)
+      .map((t) => t.replace(/s$/, ""));
+    const unexpectedForm =
+      tokens &&
+      [
+        "spray",
+        "pudding",
+        "soup",
+        "sauce",
+        "chips",
+        "snack",
+        "bread",
+        "cracker",
+        "dressing",
+        "marinade",
+        "seasoning",
+      ].some((form) => description.includes(form) && !tokens.includes(form));
+    return (
+      !unexpectedForm &&
+      (!tokens ||
+        tokens.every((t) => description.includes(t.replace(/s$/, "")))) &&
+      p.items?.some((i) => i.price?.regular !== undefined)
+    );
+  });
   if (!product) return undefined;
   const sku = product.items!.find((i) => i.price?.regular !== undefined)!;
   return {
@@ -61,7 +105,10 @@ export function krogerBaseUrl() {
     ? "https://api-ce.kroger.com/v1"
     : "https://api.kroger.com/v1";
 }
-export async function livePrices(plan: Plan): Promise<LivePrices> {
+export async function livePrices(
+  plan: Plan,
+  ingredientNames?: string[],
+): Promise<LivePrices> {
   const clientId = process.env.KROGER_CLIENT_ID,
     secret = process.env.KROGER_CLIENT_SECRET;
   if (!clientId || !secret)
@@ -117,7 +164,7 @@ export async function livePrices(plan: Plan): Promise<LivePrices> {
   const store = locations.data[0];
   if (!store)
     throw new Error("No Kroger-family store was found near this ZIP.");
-  const names = [
+  const names = ingredientNames ?? [
     ...new Set(plan.batches.flatMap((b) => b.groceries.map((g) => g.name))),
   ];
   const results: LivePrices["items"] = [];
@@ -130,8 +177,9 @@ export async function livePrices(plan: Plan): Promise<LivePrices> {
               await get("products", {
                 "filter.term": ingredient,
                 "filter.locationId": store.locationId,
-                "filter.limit": "5",
+                "filter.limit": "20",
               }),
+              ingredient,
             );
             return product
               ? { ingredient, ...product }

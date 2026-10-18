@@ -574,11 +574,17 @@ export default function Dashboard() {
                         ) : (
                           <button
                             className="primary"
-                            disabled={!!busy || plan.status === "infeasible"}
+                            disabled={
+                              !!busy ||
+                              plan.status === "infeasible" ||
+                              plan.pricingSource === "kroger"
+                            }
                             onClick={() => planAction("plans/approve")}
                           >
                             <Check size={17} />
-                            Approve this week
+                            {plan.pricingSource === "kroger"
+                              ? "Awaiting final quote"
+                              : "Approve this week"}
                           </button>
                         )}
                         <small>
@@ -606,11 +612,17 @@ export default function Dashboard() {
                     <div>
                       <h2>
                         Your shopping list
-                        <span className="status draft">Sandbox prices</span>
+                        <span className="status draft">
+                          Kroger{" "}
+                          {data?.integrations.krogerEnvironment ===
+                          "certification"
+                            ? "certification"
+                            : "prices"}
+                        </span>
                       </h2>
                       <p>
-                        Whole packages are included in your budget. Pantry items
-                        are subtracted first.
+                        Recipe quantities are matched to Kroger products. Pantry
+                        items are subtracted first.
                       </p>
                     </div>
                     <button
@@ -629,115 +641,101 @@ export default function Dashboard() {
                     >
                       <RefreshCw size={14} />
                       {data?.integrations.krogerEnvironment === "certification"
-                        ? "Check test prices"
-                        : "Check live prices"}
+                        ? "Refresh Kroger test prices"
+                        : "Refresh Kroger prices"}
                     </button>
                   </div>
                   {!plan ? (
                     <Empty onClick={() => setSettings(true)} />
+                  ) : !plan.retailBasket ? (
+                    <div className="alert neutral">
+                      {plan.pricingError ||
+                        "Refresh Kroger prices to match this plan’s ingredients. No synthetic item prices are used in this shopping list."}
+                    </div>
                   ) : (
-                    plan.batches.map((b, i) => (
-                      <section className="panel" key={b.id}>
-                        <div className="panel-heading">
-                          <h3>
-                            <ShoppingBasket size={18} />
-                            Delivery {i + 1} ·{" "}
-                            {b.days.map((d) => DAYS[d].slice(0, 3)).join(", ")}
-                          </h3>
-                          <b>{money(b.subtotalCents)}</b>
-                        </div>
-                        <div className="table-wrap">
-                          <table>
-                            <thead>
-                              <tr>
-                                <th>Ingredient</th>
-                                <th>Recipe needs</th>
-                                <th>Buy</th>
-                                <th>Sandbox cost</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {b.groceries.map((g, j) => (
-                                <tr key={j}>
-                                  <td className="capitalize">
-                                    {g.name}
-                                    {g.pantryUsed > 0 && (
-                                      <small>
-                                        {g.pantryUsed.toFixed(1)} {g.unit} from
-                                        pantry
-                                      </small>
-                                    )}
-                                  </td>
-                                  <td>
-                                    {g.required.toFixed(1)} {g.unit}
-                                  </td>
-                                  <td>
-                                    {g.packages} × {g.packageSize} {g.unit}
-                                  </td>
-                                  <td>{money(g.totalCents)}</td>
+                    <>
+                      <div className="alert neutral">
+                        {plan.retailBasket.storeName} ·{" "}
+                        {plan.retailBasket.environment === "certification"
+                          ? "Kroger certification test data"
+                          : "Kroger store prices"}
+                        <br />
+                        Updated{" "}
+                        {new Date(plan.retailBasket.fetchedAt).toLocaleString(
+                          "en-US",
+                          { hour12: true },
+                        )}
+                        . {plan.retailBasket.unresolved} items need review.
+                        Final delivery fees, tax, tips, and availability are not
+                        quoted; purchases are on hold.
+                      </div>
+                      {plan.retailBasket.batches.map((batch, i) => (
+                        <section className="panel" key={batch.batchId}>
+                          <div className="panel-heading">
+                            <h3>Delivery {i + 1}</h3>
+                            <b>{money(batch.subtotalCents)} priced items</b>
+                          </div>
+                          <div className="table-wrap">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Ingredient needed</th>
+                                  <th>Kroger product</th>
+                                  <th>Buy</th>
+                                  <th>Package price</th>
+                                  <th>Item total</th>
                                 </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </section>
-                    ))
-                  )}
-                  <div className="alert neutral">
-                    {data?.integrations.livePrices
-                      ? data.integrations.krogerEnvironment === "certification"
-                        ? "Kroger certification is connected. Results are test data, not live store prices. They do not authorize purchases."
-                        : "Kroger lookup is available. Product candidates are separate from the sandbox budget and do not authorize purchases."
-                      : "Add Kroger API credentials to check real store prices. The grocery plan currently uses clearly labeled synthetic package prices."}
-                  </div>
-                  {plan?.livePrices && (
-                    <section className="panel">
-                      <div className="panel-heading">
-                        <h3>
-                          {plan.livePrices.environment === "certification"
-                            ? "Certification test prices"
-                            : "Live product prices"}{" "}
-                          · {plan.livePrices.storeName}
-                        </h3>
-                        <small>
-                          {new Date(plan.livePrices.fetchedAt).toLocaleString(
-                            "en-US",
-                            { hour12: true },
-                          )}
-                        </small>
-                      </div>
-                      <p className="muted">
-                        Search candidates only. Verify product suitability and
-                        package sizes. Delivery, tax, tips, availability, and a
-                        bounded final checkout total are not included.
-                      </p>
-                      <div className="table-wrap">
-                        <table>
-                          <thead>
-                            <tr>
-                              <th>Ingredient</th>
-                              <th>Product candidate</th>
-                              <th>Package</th>
-                              <th>Regular price</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {plan.livePrices.items.map((x) => (
-                              <tr key={x.ingredient}>
-                                <td>{x.ingredient}</td>
-                                <td>{x.description ?? x.error}</td>
-                                <td>{x.size ?? "—"}</td>
-                                <td>
-                                  {x.regularCents === undefined
-                                    ? "Unavailable"
-                                    : money(x.regularCents)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </section>
+                              </thead>
+                              <tbody>
+                                {batch.lines.map((line, j) => (
+                                  <tr key={j}>
+                                    <td>
+                                      {line.name}
+                                      <small>
+                                        {line.required.toFixed(1)} {line.unit}{" "}
+                                        needed
+                                        {line.pantryUsed > 0
+                                          ? ` · ${line.pantryUsed.toFixed(1)} ${line.unit} from pantry`
+                                          : ""}
+                                      </small>
+                                    </td>
+                                    <td>
+                                      {line.description ||
+                                        "No matching product"}
+                                      {line.productId && (
+                                        <small>Product {line.productId}</small>
+                                      )}
+                                      {line.issue && (
+                                        <small className="error">
+                                          {line.issue}
+                                        </small>
+                                      )}
+                                    </td>
+                                    <td>
+                                      {line.packages !== undefined
+                                        ? `${line.packages} × ${line.size}`
+                                        : line.size
+                                          ? `${line.size} · quantity needs review`
+                                          : "Needs review"}
+                                    </td>
+                                    <td>
+                                      {line.unitPriceCents !== undefined
+                                        ? money(line.unitPriceCents)
+                                        : "Unavailable"}
+                                    </td>
+                                    <td>
+                                      {line.totalCents !== undefined
+                                        ? money(line.totalCents)
+                                        : "Not priced"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </section>
+                      ))}
+                    </>
                   )}
                 </>
               )}
@@ -807,8 +805,16 @@ export default function Dashboard() {
                             </b>
                           </div>
                           <div className="schedule-row">
-                            <span>All-in sandbox total</span>
-                            <b>{money(b.totalCents)}</b>
+                            <span>
+                              {plan.pricingSource === "kroger"
+                                ? "Final total"
+                                : "Historical sandbox total"}
+                            </span>
+                            <b>
+                              {plan.pricingSource === "kroger"
+                                ? "Awaiting quote"
+                                : money(b.totalCents)}
+                            </b>
                           </div>
                           {b.reason && <p className="error">{b.reason}</p>}
                           {b.orderId && (
@@ -837,8 +843,9 @@ export default function Dashboard() {
                       <span className="eyebrow">STRIPE TEST MODE</span>
                       <h2>A checkout without the charge.</h2>
                       <p>
-                        Test the approved {money(total)} weekly total in Stripe
-                        Checkout.
+                        {plan?.pricingSource === "kroger"
+                          ? "Checkout is on hold until every ingredient and the final all-in total are confirmed."
+                          : `Test the approved ${money(total)} weekly total in Stripe Checkout.`}
                         <br />
                         No money moves. This does not purchase groceries.
                       </p>
@@ -1359,7 +1366,7 @@ export default function Dashboard() {
                 <ArrowRight size={17} />
               </button>
               <p className="form-footnote">
-                Real recipes · Sandbox grocery prices · No purchases
+                Real recipes · Kroger product prices · Purchases on hold
               </p>
             </form>
           </section>
@@ -1508,54 +1515,54 @@ function Budget({
   budget: number;
   spent: number;
 }) {
-  const sum = (key: "subtotalCents" | "feeCents" | "taxCents" | "tipCents") =>
-    plan?.batches.reduce((a, b) => a + b[key], 0) ?? 0;
-  const total = plan?.totalCents ?? 0;
+  const basket = plan?.retailBasket;
+  const subtotal = basket?.subtotalCents ?? 0;
   return (
     <div className="budget-card">
       <div className="budget-heading">
         <Wallet size={18} />
         <h3>Your weekly budget</h3>
-        <span className="sandbox-label">SANDBOX</span>
+        <span className="sandbox-label">
+          {basket?.environment === "certification" ? "KROGER TEST" : "KROGER"}
+        </span>
       </div>
       <div className="budget-number">
-        {money(total)}
-        <span> / {money(budget)}</span>
+        {basket ? money(subtotal) : "Pending"}
+        <span> / {money(budget)} cap</span>
       </div>
-      <div className="budget-track">
-        <span
-          className={total > budget ? "over" : ""}
-          style={{ width: Math.min((total / budget) * 100, 100) + "%" }}
-        />
-      </div>
-      <p className={total > budget ? "error" : "budget-room"}>
-        {total > budget
-          ? money(total - budget) + " over budget"
-          : money(budget - total) + " breathing room"}
+      <p className={subtotal > budget ? "error" : "budget-room"}>
+        {subtotal > budget
+          ? "Priced items already exceed your cap. Purchases are blocked."
+          : "Priced groceries only—not the final weekly total."}
       </p>
       <div className="budget-breakdown">
-        {[
-          ["Groceries", sum("subtotalCents")],
-          ["Delivery & service", sum("feeCents")],
-          ["Tax (simulated)", sum("taxCents")],
-          ["Tips", sum("tipCents")],
-        ].map(([label, n]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <span>{money(Number(n))}</span>
-          </div>
-        ))}
+        <div>
+          <span>Priced groceries</span>
+          <span>{basket ? money(subtotal) : "Pending"}</span>
+        </div>
+        <div>
+          <span>Items needing review</span>
+          <span>{basket?.unresolved ?? "Pending"}</span>
+        </div>
+        <div>
+          <span>Delivery, tax & tips</span>
+          <span>Awaiting quote</span>
+        </div>
       </div>
       <div className="budget-total">
-        <span>Weekly total</span>
-        <b>{money(total)}</b>
+        <span>Final weekly total</span>
+        <b>Not confirmed</b>
       </div>
       <small className="budget-commit">
-        {money(spent)} in submitted sandbox orders
+        {basket?.environment === "certification"
+          ? "Prices are from Kroger’s certification API, not production stores."
+          : "Every ingredient and checkout charge must be confirmed before ordering."}
       </small>
       <div className="budget-guarantee">
         <CheckCircle2 size={15} />
-        <span>Your cap is enforced before every order.</span>
+        <span>
+          Purchases stay on hold until the all-in total fits your cap.
+        </span>
       </div>
     </div>
   );

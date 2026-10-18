@@ -26,6 +26,7 @@ export type Preferences = {
   recurring: boolean;
 };
 export type Grocery = {
+  pricingIssue?: string;
   name: string;
   unit: string;
   required: number;
@@ -51,6 +52,9 @@ export type Batch = {
   reason?: string;
 };
 export type Plan = {
+  pricingSource?: "kroger";
+  retailBasket?: import("./kroger-basket").RetailBasket;
+  pricingError?: string;
   livePrices?: import("./grocery-prices").LivePrices;
   id: string;
   week: string;

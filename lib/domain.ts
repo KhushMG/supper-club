@@ -290,6 +290,8 @@ export function sandboxBasket(
 }
 export function quote(plan: Plan): Plan {
   delete plan.livePrices;
+  delete plan.retailBasket;
+  delete plan.pricingError;
   const p = plan.preferences,
     pantry = structuredClone(p.pantry);
   // A batch spans at most three days; no assumed week-long fresh storage.
@@ -344,6 +346,7 @@ export function makePlan(
   week: string,
   feedback = "",
   mode: Plan["sourceMode"] = "published-recipes",
+  retailPricing = false,
 ): Plan {
   const p: Preferences = preferenceSchema.parse(preferences);
   const eligible = recipes.filter(
@@ -379,7 +382,7 @@ export function makePlan(
     });
   }
   quote(plan);
-  if (plan.status === "infeasible") {
+  if (plan.status === "infeasible" && !retailPricing) {
     for (const meal of plan.meals) {
       const options = eligible
         .filter((r) => r.cuisine === meal.recipe.cuisine)
@@ -398,6 +401,10 @@ export function makePlan(
   return plan;
 }
 export function assertApprovable(p: Plan) {
+  if (p.pricingSource === "kroger")
+    throw new Error(
+      "Kroger product pricing is not a final checkout quote. Resolve all items and obtain delivery, tax, and fee totals before approving purchases.",
+    );
   if (!["draft", "paused"].includes(p.status))
     throw new Error("This plan is not awaiting approval.");
   if (p.totalCents > p.preferences.budgetCents)
@@ -425,6 +432,7 @@ export function pause(p: Plan) {
   });
 }
 export function processDue(p: Plan, now = new Date(), force = false) {
+  if (p.pricingSource === "kroger") return 0;
   if (p.status !== "approved" || p.approvedRevision !== p.revision) return 0;
   let count = 0;
   let committed = p.batches
