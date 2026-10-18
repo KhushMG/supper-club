@@ -10,7 +10,7 @@ export type SimulationQuote = {
 };
 
 // These are demo fixtures, never retailer quotes or real ordering authorization.
-export function prepareSimulation(plan: Plan) {
+export function prepareSimulation(plan: Plan, incrementRevision = true) {
   if (!plan.retailBasket || plan.pricingError)
     throw new Error("Refresh Kroger prices before preparing a simulation.");
   if (plan.batches.some(b => b.orderId))
@@ -37,7 +37,9 @@ export function prepareSimulation(plan: Plan) {
     feeCents += batch.feeCents;
     taxCents += batch.taxCents;
   }
-  plan.revision++;
+  if (incrementRevision) plan.revision++;
+  delete plan.agentPaidRevision;
+  delete plan.agentError;
   plan.totalCents = plan.batches.reduce((sum,b) => sum + b.totalCents, 0);
   plan.simulationQuote = {
     revision: plan.revision, missingItems, mockItemsCents: missingItems.length * 500,

@@ -1,3 +1,4 @@
+import { runOrderAgent } from "@/lib/order-agent";
 import { prepareSimulation } from "@/lib/simulation";
 import { pricePlan } from "@/lib/kroger-basket";
 import { NextResponse } from "next/server";
@@ -259,6 +260,7 @@ async function handle(req: Request) {
       return json({ ok: true });
     }
     if (
+      path === "plans/automate" ||
       path === "plans/approve" ||
       path === "plans/pause" ||
       path === "sandbox/run"
@@ -270,8 +272,13 @@ async function handle(req: Request) {
         const p = s.plans.find((p) => p.id === args.planId);
         if (!p || p.revision !== args.revision)
           throw new Error("Plan changed. Refresh first.");
-        if (path === "plans/approve") {
+        if (path === "plans/automate") {
+          if (p.status !== "approved" || p.approvedRevision !== p.revision) throw new Error("Approve the plan first.");
+          p.autoOrder = true;
+          log(s, "Automatic test payment and scheduled simulated ordering enabled.");
+        } else if (path === "plans/approve") {
           approve(p);
+          p.autoOrder = true;
           log(
             s,
             "Weekly plan approved. Only sandbox grocery orders are enabled.",
@@ -292,6 +299,7 @@ async function handle(req: Request) {
           );
         }
       });
+      if (path === "plans/approve" || path === "plans/automate") await runOrderAgent(args.planId);
       return json({ ok: true });
     }
     if (path === "sandbox/cancel") {
@@ -356,6 +364,7 @@ async function handle(req: Request) {
             "Plan changed while pricing. Refresh before trying again.",
           );
         plan.revision++;
+        if (plan.simulationQuote) plan.simulationQuote.revision = plan.revision;
         s.plans[index] = plan;
         log(
           s,

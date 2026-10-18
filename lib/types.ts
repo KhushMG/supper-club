@@ -52,6 +52,9 @@ export type Batch = {
   reason?: string;
 };
 export type Plan = {
+  autoOrder?: boolean;
+  agentPaidRevision?: number;
+  agentError?: string;
   simulationQuote?: import("./simulation").SimulationQuote;
   pricingSource?: "kroger";
   retailBasket?: import("./kroger-basket").RetailBasket;
@@ -73,6 +76,8 @@ export type Plan = {
   issue?: string;
 };
 export type Payment = {
+  agent?: boolean;
+  intentId?: string;
   returnOrigin?: string;
   receiptPage?: boolean;
   id: string;

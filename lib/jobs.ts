@@ -1,3 +1,4 @@
+import { runOrderAgent } from "./order-agent";
 import { pricePlan } from "./kroger-basket";
 import { mutate, readState } from "./db";
 import { discover } from "./recipes";
@@ -12,6 +13,8 @@ export async function runJobs() {
   });
   if (!acquired) return { skipped: true };
   try {
+    const pending = await readState();
+    for (const plan of pending.plans.filter(p => p.autoOrder && p.status === "approved")) await runOrderAgent(plan.id, undefined, now);
     await mutate((s) => {
       let count = 0;
       for (const p of s.plans) count += processDue(p, now);

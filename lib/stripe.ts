@@ -55,6 +55,7 @@ export async function createCheckout(
       plan.approvedRevision !== plan.revision
     )
       throw new Error("Approve this plan before starting checkout.");
+    if (plan.autoOrder) throw new Error("The ordering agent handles test payment automatically.");
     if (plan.pricingSource === "kroger" && !validSimulation(plan))
       throw new Error(
         "A final all-in Kroger quote is required before checkout.",

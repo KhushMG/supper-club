@@ -1,3 +1,4 @@
+import { prepareSimulation } from "./simulation";
 import { ingredient } from "./domain";
 import { livePrices, type LivePrices } from "./grocery-prices";
 import type { Plan } from "./types";
@@ -252,5 +253,7 @@ export async function pricePlan(plan: Plan) {
     plan.status = "draft";
     delete plan.approvedRevision;
     delete plan.approvedAt;
+    if (plan.retailBasket) prepareSimulation(plan, false);
   }
 }
+

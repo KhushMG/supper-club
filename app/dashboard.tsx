@@ -551,7 +551,7 @@ export default function Dashboard() {
                         </h3>
                         <p>
                           {plan?.status === "approved"
-                            ? "We’ll handle the sandbox orders. You can pause any time before submission."
+                            ? "The agent handles test payment and scheduled simulated orders. You can pause before submission."
                             : "Swap anything that doesn’t sound like you. Nothing gets ordered until you approve."}
                         </p>
                         {!plan ? (
@@ -584,7 +584,7 @@ export default function Dashboard() {
                             <Check size={17} />
                             {(plan.pricingSource === "kroger" && !plan.simulationQuote)
                               ? "Awaiting final quote"
-                              : "Approve this week"}
+                              : "Approve & let agent order"}
                           </button>
                         )}
                         {plan?.retailBasket && !plan.simulationQuote && (
@@ -593,6 +593,8 @@ export default function Dashboard() {
                           </button>
                         )}
                         {plan?.simulationQuote && <p>SIMULATION: {money(plan.simulationQuote.mockItemsCents)} mock ingredients + {money(plan.simulationQuote.feeCents)} delivery + {money(plan.simulationQuote.taxCents)} tax. No real purchase.</p>}
+                        {plan?.status === "approved" && !plan.autoOrder && <button className="secondary" disabled={!!busy} onClick={() => planAction("plans/automate")}>Let agent handle checkout & orders</button>}
+                        {plan?.autoOrder && <p>{plan.agentError || (plan.agentPaidRevision === plan.revision ? "Agent: payment confirmed. Orders scheduled automatically." : "Agent: confirming test payment. Unpaid orders stay on hold.")}</p>}
                         <small>
                           {plan?.issue ?? "You’re always in control."}
                         </small>
@@ -847,6 +849,7 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
+                  {plan?.autoOrder && <div className="alert neutral">Automatic checkout is enabled. No card entry or manual order step is required. The agent uses a Stripe test payment method and submits simulated orders at the scheduled times.</div>}
                   <section className="panel payment-panel">
                     <div>
                       <span className="eyebrow">STRIPE TEST MODE</span>
@@ -870,6 +873,7 @@ export default function Dashboard() {
                         disabled={
                           !!busy ||
                           !plan ||
+                          plan.autoOrder === true ||
                           plan.status !== "approved" ||
                           !data?.integrations.stripe ||
                           payments.some((p) => p.status === "paid" && p.revision === plan?.revision)
@@ -886,7 +890,7 @@ export default function Dashboard() {
                         <CreditCard size={16} />
                         {payments.some((p) => p.status === "paid" && p.revision === plan?.revision)
                           ? "Test payment confirmed"
-                          : "Try Stripe checkout"}
+                          : plan?.autoOrder ? "Agent handles checkout" : "Try Stripe checkout"}
                         <ArrowUpRight size={15} />
                       </button>
                       <small>
