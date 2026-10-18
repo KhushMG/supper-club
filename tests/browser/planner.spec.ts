@@ -114,9 +114,7 @@ test("completion waits for verified execution and opens the ordered week", async
   await expect(
     page.getByRole("heading", { name: "Aprons off. We’ve got this." }),
   ).toBeVisible();
-  await expect(page.locator(".kitchen-toast")).toContainText(
-    "Your week is approved",
-  );
+  await expect(page.locator(".kitchen-toast")).toHaveCount(0);
   verified = true;
   await expect(
     page.getByRole("heading", { name: "Test checkout complete" }),
@@ -154,7 +152,7 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
   await expect(page.locator(".skeleton-card")).toHaveCount(
     defaults.days.length,
   );
-  await expect(page.locator(".kitchen-toast")).toContainText("Chef’s on it!");
+  await expect(page.locator(".kitchen-toast")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(
@@ -187,7 +185,9 @@ test("page refresh renders only the loader until data is ready", async ({
     page.getByRole("status", { name: "Loading your kitchen" }),
   ).toBeVisible();
   await expect(
-    page.locator(".app-shell, .skeleton-card, .kitchen-toast, .page-loading .spin"),
+    page.locator(
+      ".app-shell, .skeleton-card, .kitchen-toast, .page-loading .spin",
+    ),
   ).toHaveCount(0);
   await expect.poll(() => !!release).toBe(true);
   release!();
@@ -198,7 +198,9 @@ test("page refresh renders only the loader until data is ready", async ({
     page.getByRole("status", { name: "Loading your kitchen" }),
   ).toBeVisible();
   await expect(
-    page.locator(".app-shell, .skeleton-card, .kitchen-toast, .page-loading .spin"),
+    page.locator(
+      ".app-shell, .skeleton-card, .kitchen-toast, .page-loading .spin",
+    ),
   ).toHaveCount(0);
   await expect.poll(() => !!release).toBe(true);
   release!();

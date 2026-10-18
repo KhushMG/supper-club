@@ -311,7 +311,7 @@ export default function Dashboard() {
       setTab("week");
       setNotice(
         data?.integrations.ai
-          ? "Chef’s on it! Hunting down your next favorite dinners."
+          ? ""
           : "Your week is ready. Review it, then approve the order.",
       );
     }
@@ -1245,29 +1245,17 @@ export default function Dashboard() {
           </footer>
         </div>
       </main>
-      {(notice || findingDinners || placingOrder) && !orderComplete && (
+      {notice && !findingDinners && !placingOrder && !orderComplete && (
         <div className="kitchen-toast" role="status">
-          {findingDinners || placingOrder ? (
-            <LoaderCircle className="spin" size={22} aria-hidden="true" />
-          ) : (
-            <CheckCircle2 size={22} aria-hidden="true" />
-          )}
-          <span>
-            {placingOrder
-              ? "Your week is approved. Let’s get this kitchen stocked!"
-              : findingDinners
-                ? "Chef’s on it! A delicious week is in the works."
-                : notice}
-          </span>
-          {!findingDinners && !placingOrder && (
-            <button
-              className="text-button"
-              aria-label="Dismiss notice"
-              onClick={() => setNotice("")}
-            >
-              <X size={18} />
-            </button>
-          )}
+          <CheckCircle2 size={22} aria-hidden="true" />
+          <span>{notice}</span>
+          <button
+            className="text-button"
+            aria-label="Dismiss notice"
+            onClick={() => setNotice("")}
+          >
+            <X size={18} />
+          </button>
         </div>
       )}
       {orderComplete && (

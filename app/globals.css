@@ -1651,6 +1651,10 @@ textarea {
   margin: 0 0 4px;
 }
 .sidebar-approvals button {
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+  min-width: 0;
   justify-content: flex-start;
   font-size: 0.9375rem;
   padding: 12px 10px;
