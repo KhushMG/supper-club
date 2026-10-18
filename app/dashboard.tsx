@@ -1,5 +1,6 @@
 "use client";
 import { initials, type Profile } from "@/lib/auth-profile";
+import { ingredientDisplayText } from "@/lib/recipe-display";
 import { RecipeImage } from "./recipe-image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -1698,15 +1699,16 @@ export default function Dashboard() {
               </p>
               <h2 id="recipe-title">{detail.title}</h2>
               <p>
-                Original recipe serves {detail.servings}. Your shopping list
-                scales to {selected.servings}.
+                Quantities below are for the original {detail.servings}-serving recipe.
+                Your grocery list is calculated for {selected.servings} people,
+                rounded up to whole packages.
               </p>
-              <h3>From the recipe</h3>
+              <h3>Ingredients <span className="ingredient-servings">{detail.servings} servings</span></h3>
               <ul className="ingredients">
-                {detail.ingredients.map((x, i) => (
+                {detail.ingredients.map(ingredientDisplayText).filter(Boolean).map((x, i) => (
                   <li key={i}>
-                    <Check size={13} />
-                    {x}
+                    <span className="ingredient-bullet" aria-hidden="true" />
+                    <span>{x}</span>
                   </li>
                 ))}
               </ul>

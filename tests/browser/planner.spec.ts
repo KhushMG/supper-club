@@ -390,3 +390,24 @@ test("profile identity appears in the sidebar and account page, with working sig
   await expect(page).toHaveURL(/\/login$/);
   expect((await context.cookies()).some(c=>c.name==='supper_session')).toBe(false);
 });
+
+test("recipe popup cleans publisher punctuation and remains readable on mobile", async ({page,request}) => {
+  const state=await (await request.get('/api/state')).json();
+  const plan=makePlan(recipes,defaults,'2030-04-01');
+  const ingredients=['½ lb steak (flank or other cut) (, thinly sliced)','1 lb fresh wide rice noodles ((sen yai))','1 lb Chinese broccoli (gai lan) ( , cut into 2-inch pieces)','2 eggs (, beaten)','White pepper (, to taste)','|'];
+  plan.meals[0].recipe={...plan.meals[0].recipe,servings:4,ingredients};
+  state.plans=[plan]; state.activePlanId=plan.id; state.agentRuns=[];
+  await page.route('**/api/state',r=>r.fulfill({json:state}));
+  for(const width of [1280,390]) {
+    await page.setViewportSize({width,height:800});
+    await page.goto('/'); await page.locator('.image-button').first().click();
+    const dialog=page.locator('.recipe-modal');
+    await expect(dialog.locator('.ingredients li')).toHaveText(['½ lb steak (flank or other cut), thinly sliced','1 lb fresh wide rice noodles (sen yai)','1 lb Chinese broccoli (gai lan), cut into 2-inch pieces','2 eggs, beaten','White pepper, to taste']);
+    await expect(dialog).toContainText('original 4-serving recipe');
+    expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+    const source=dialog.getByRole('link',{name:'Cook with the original recipe'});
+    await source.scrollIntoViewIfNeeded(); await expect(source).toBeInViewport();
+    await page.getByRole('button',{name:'Close recipe',exact:true}).click();
+    await expect(dialog).toHaveCount(0);
+  }
+});
