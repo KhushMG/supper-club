@@ -1,0 +1,38 @@
+{
+  "name": "supper-club",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "db:setup": "tsx --env-file-if-exists=.env.local scripts/db-setup.ts",
+    "recipes:refresh": "tsx scripts/refresh-recipes.ts",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@libsql/client": "0.18.0",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "lucide-react": "^0.468.0",
+    "next": "16.4.2",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "stripe": "23.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module"
+}
