@@ -177,6 +177,44 @@ test("execution agent selects payment/order tool, verifies results and finishes 
     globalThis.fetch = original;
   }
 });
+test("search configuration errors stop immediately instead of spending more retry calls", async () => {
+  const original = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async (_url, init) => {
+    requests++;
+    const body = JSON.parse(String(init?.body));
+    if (body.tools[0].type === "web_search")
+      return Response.json(
+        { error: { message: "Unsupported parameter" } },
+        { status: 400 },
+      );
+    return Response.json({
+      output: [
+        {
+          type: "function_call",
+          call_id: "bad-search",
+          name: "search_recipes",
+          arguments: JSON.stringify({
+            cuisine: "Italian",
+            query: "test specific pasta",
+          }),
+        },
+      ],
+    });
+  };
+  try {
+    const run = await startPlanning(
+      defaults,
+      "configuration failure regression",
+    );
+    await driveAgent(run.id);
+    assert.equal((await getRun(run.id))?.status, "failed");
+    assert.equal(requests, 2);
+    assert.match((await getRun(run.id))?.error || "", /Unsupported parameter/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
 test("server cache expires and requests can exceed 20 per day while enforcing the lifetime cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);
   assert.deepEqual(await cached("test"), { answer: 42 });
