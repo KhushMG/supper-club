@@ -169,3 +169,38 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
     "Your week is ready to review",
   );
 });
+
+test("page refresh renders only the loader until data is ready", async ({
+  page,
+  request,
+}) => {
+  const state = await (await request.get("/api/state")).json();
+  let release: (() => void) | undefined;
+  await page.route("**/api/state", async (route) => {
+    await new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await route.fulfill({ json: state });
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("status", { name: "Loading your kitchen" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".app-shell, .skeleton-card, .kitchen-toast, .page-loading .spin"),
+  ).toHaveCount(0);
+  await expect.poll(() => !!release).toBe(true);
+  release!();
+  await expect(page.locator(".app-shell")).toBeVisible();
+  release = undefined;
+  await page.getByRole("button", { name: "Refresh plan" }).click();
+  await expect(
+    page.getByRole("status", { name: "Loading your kitchen" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".app-shell, .skeleton-card, .kitchen-toast, .page-loading .spin"),
+  ).toHaveCount(0);
+  await expect.poll(() => !!release).toBe(true);
+  release!();
+  await expect(page.locator(".app-shell")).toBeVisible();
+});

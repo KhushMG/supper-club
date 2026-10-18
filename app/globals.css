@@ -1823,3 +1823,16 @@ textarea {
     animation: none;
   }
 }
+
+.page-loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--green);
+}
+.page-loading p {
+  margin: 0;
+  font-size: 1.25rem;
+}

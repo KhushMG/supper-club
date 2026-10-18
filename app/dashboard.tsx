@@ -65,6 +65,7 @@ const prettyDate = (s: string) =>
 export default function Dashboard() {
   const [data, setData] = useState<Data>(),
     [tab, setTab] = useState("week"),
+    [pageRefreshing, setPageRefreshing] = useState(false),
     [settings, setSettings] = useState(false),
     [pendingOrder, setPendingOrder] = useState<{
       id: string;
@@ -318,6 +319,30 @@ export default function Dashboard() {
   function planAction(path: string) {
     if (plan) return act(path, { planId: plan.id, revision: plan.revision });
   }
+  if (!data || pageRefreshing) {
+    return (
+      <main className="page-loading" aria-busy={!error}>
+        {error ? (
+          <div role="alert">
+            <p>{error}</p>
+            <button
+              className="primary"
+              onClick={() => {
+                setError("");
+                refresh().catch((e) => setError(e.message));
+              }}
+            >
+              Try again
+            </button>
+          </div>
+        ) : (
+          <div role="status" aria-label="Loading your kitchen">
+            <p>Setting the table…</p>
+          </div>
+        )}
+      </main>
+    );
+  }
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -463,7 +488,11 @@ export default function Dashboard() {
           <button
             className="text-button"
             onClick={() => {
-              refresh().catch((e) => setError(e.message));
+              setError("");
+              setPageRefreshing(true);
+              refresh()
+                .catch((e) => setError(e.message))
+                .finally(() => setPageRefreshing(false));
             }}
             aria-label="Refresh plan"
           >
@@ -515,7 +544,7 @@ export default function Dashboard() {
               {busy.includes("/") ? "Updating your kitchen…" : busy + "…"}
             </div>
           )}
-          {findingDinners || placingOrder || (!data && !error) ? (
+          {findingDinners || placingOrder ? (
             <section
               className="kitchen-loading"
               aria-busy="true"
