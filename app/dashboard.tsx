@@ -867,6 +867,17 @@ export default function Dashboard() {
                             {p.status}
                           </span>
                           {money(p.amountCents)}
+                          {p.status === "paid" && p.sessionId && (
+                            <a
+                              className="text-button"
+                              href={
+                                "/checkout/success?session_id=" +
+                                encodeURIComponent(p.sessionId)
+                              }
+                            >
+                              View receipt
+                            </a>
+                          )}
                           {p.sessionId && (
                             <button
                               className="text-button"

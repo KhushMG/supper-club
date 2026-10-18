@@ -34,7 +34,10 @@ export default function Login() {
               });
               const j = await r.json();
               if (!r.ok) throw new Error(j.error);
-              location.href = "/";
+              const next = new URLSearchParams(location.search).get("next");
+              location.href = next?.startsWith("/checkout/success?")
+                ? next
+                : "/";
             } catch (e) {
               setError((e as Error).message);
             } finally {

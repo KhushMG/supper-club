@@ -58,6 +58,10 @@ test("checkout sends approved server total to Stripe and reuses uncertain attemp
   const response = await createCheckout(p.id, "http://localhost:3000", stripe);
   assert.equal(response.url, "https://checkout.stripe.com/test");
   assert.equal(calls.length, 2);
+  assert.equal(
+    calls[0].body.success_url,
+    "http://localhost:3000/checkout/success?session_id={CHECKOUT_SESSION_ID}",
+  );
   assert.equal(calls[0].key, calls[1].key);
   assert.deepEqual(calls[0].body, calls[1].body);
   assert.equal(

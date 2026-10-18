@@ -69,6 +69,7 @@ export async function createCheckout(
       revision: plan.revision,
       amountCents: plan.totalCents,
       returnOrigin: origin,
+      receiptPage: true,
       status: "creating",
       createdAt: new Date().toISOString(),
       expiresAt: Math.floor(Date.now() / 1000) + 3600,
@@ -77,13 +78,19 @@ export async function createCheckout(
     return p;
   });
   if (attempt.status === "paid")
-    throw new Error("This plan already has a successful test payment.");
+    return {
+      url:
+        "/checkout/success?session_id=" +
+        encodeURIComponent(attempt.sessionId || ""),
+    };
   if (attempt.sessionId) {
     const session = await stripe.checkout.sessions.retrieve(attempt.sessionId);
     if (session.livemode) throw new Error("Live session rejected.");
     if (session.payment_status === "paid") {
       await mutate((s) => acceptPayment(s, session));
-      throw new Error("Payment already completed. Refresh to see the receipt.");
+      return {
+        url: "/checkout/success?session_id=" + encodeURIComponent(session.id),
+      };
     }
     if (session.status === "expired") {
       await mutate((s) => {
@@ -126,7 +133,9 @@ export async function createCheckout(
         },
         success_url:
           (attempt.returnOrigin || origin) +
-          "/?checkout=success&session_id={CHECKOUT_SESSION_ID}",
+          (attempt.receiptPage
+            ? "/checkout/success?session_id={CHECKOUT_SESSION_ID}"
+            : "/?checkout=success&session_id={CHECKOUT_SESSION_ID}"),
         cancel_url: (attempt.returnOrigin || origin) + "/?checkout=cancelled",
         expires_at: attempt.expiresAt,
       },

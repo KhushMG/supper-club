@@ -69,6 +69,7 @@ export type Plan = {
 };
 export type Payment = {
   returnOrigin?: string;
+  receiptPage?: boolean;
   id: string;
   planId: string;
   revision: number;
