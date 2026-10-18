@@ -1672,3 +1672,24 @@ textarea {
     justify-content: space-between;
   }
 }
+
+/* The two approval gates stay visible in navigation at every screen size. */
+.sidebar { overflow-y: auto; }
+.sidebar-approvals { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 22px; flex-shrink: 0; }
+.sidebar-approvals .nav-label { display: block; margin: 0 0 4px; }
+.sidebar-approvals button { justify-content: flex-start; font-size: 0.9375rem; padding: 12px 10px; }
+.sidebar-approvals small { color: var(--muted); font-size: 0.8125rem; line-height: 1.4; margin: 0 0 8px; }
+.sidebar-approvals .text-button { padding: 0; }
+.approval-step { display: inline-flex; align-items: center; justify-content: center; width: 23px; height: 23px; border: 1px solid currentColor; border-radius: 50%; flex-shrink: 0; }
+@media (min-width: 651px) and (max-width: 900px) {
+  .sidebar { width: 200px; }
+  .main { margin-left: 200px; }
+  .sidebar nav { margin-top: 0; }
+  .sidebar nav button { font-size: 0.875rem; justify-content: flex-start; }
+}
+@media (max-width: 650px) {
+  .sidebar { flex-wrap: wrap; gap: 14px; }
+  .sidebar-approvals { order: 3; width: 100%; margin: 0; }
+  .sidebar-approvals button { font-size: 1rem; }
+  .sidebar nav { order: 2; }
+}

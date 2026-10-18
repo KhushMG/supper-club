@@ -235,7 +235,9 @@ export default function Dashboard() {
       setSettings(false);
       setTab("week");
       setNotice(
-        "Your week is ready. Review it, then approve to enable sandbox ordering.",
+        data?.integrations.ai
+          ? "Week approved. The agent is planning; approve the order once its proposal is ready."
+          : "Your week is ready. Review it, then approve the order.",
       );
     }
   }
@@ -257,6 +259,26 @@ export default function Dashboard() {
             Your household<small>A little less to think about.</small>
           </div>
         </div>
+        <section className="sidebar-approvals" aria-label="Weekly approvals">
+          <p className="nav-label">YOUR NEXT STEPS</p>
+          <button
+            className="primary full"
+            disabled={!data || !!busy || !!runningAgent}
+            onClick={generate}
+          >
+            <span className="approval-step">1</span> Approve week
+          </button>
+          <small>Start AI planning · {money(preferences.budgetCents)} budget</small>
+          <button
+            className="secondary full"
+            disabled={!plan || !!busy || !!runningAgent || !["draft", "paused"].includes(plan.status) || !plan.simulationQuote || plan.totalCents > plan.preferences.budgetCents || plan.batches.some(b => !!b.orderId)}
+            onClick={() => planAction("plans/approve")}
+          >
+            <span className="approval-step">2</span> Approve order
+          </button>
+          <small>{runningAgent?.kind === "planning" ? "Waiting for the agent’s proposal" : plan?.status === "approved" ? "Order approved · agent handles execution" : plan?.simulationQuote ? `Authorize the ${money(plan.totalCents)} test order` : "Available when your proposal is ready"}</small>
+          <button className="text-button" onClick={() => setSettings(true)}>Change preferences</button>
+        </section>
         <p className="nav-label">YOUR KITCHEN</p>
         <nav>
           {[
