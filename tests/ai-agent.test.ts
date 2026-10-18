@@ -215,6 +215,91 @@ test("search configuration errors stop immediately instead of spending more retr
     globalThis.fetch = original;
   }
 });
+test("a valid priced proposal survives the model turn limit without another API call or order approval", async () => {
+  const run = await startPlanning(
+    { ...defaults, budgetCents: 50000 },
+    "recover ready proposal",
+  );
+  const plan = makePlan(recipes, run.preferences, run.week);
+  plan.simulationQuote = {
+    revision: plan.revision,
+    totalCents: plan.totalCents,
+    missingItems: [],
+    mockItemsCents: 0,
+    feeCents: 0,
+    taxCents: 0,
+  };
+  run.candidate = plan;
+  run.calls = 8;
+  await saveRun(run);
+  const payments = (await readState()).payments.length;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("Unexpected paid API request");
+  };
+  try {
+    await driveAgent(run.id);
+  } finally {
+    globalThis.fetch = original;
+  }
+  const saved = await getRun(run.id);
+  assert.equal(saved?.status, "awaiting_approval");
+  const state = await readState();
+  const proposal = state.plans.find((p) => p.id === saved?.planId)!;
+  assert.equal(proposal.status, "draft");
+  assert.equal(proposal.approvedRevision, undefined);
+  assert.equal(state.payments.length, payments);
+  await driveAgent(run.id);
+  assert.equal(
+    (await readState()).plans.filter((p) => p.aiRunId === run.id).length,
+    1,
+  );
+
+  const invalid = await startPlanning(
+    defaults,
+    "over budget recovery rejected",
+  );
+  invalid.candidate = structuredClone(plan);
+  invalid.candidate.week = invalid.week;
+  invalid.candidate.totalCents = invalid.preferences.budgetCents + 1;
+  invalid.calls = 8;
+  await saveRun(invalid);
+  await driveAgent(invalid.id);
+  assert.equal((await getRun(invalid.id))?.status, "failed");
+  assert.equal(
+    (await readState()).plans.some((p) => p.aiRunId === invalid.id),
+    false,
+  );
+});
+test("a valid proposal survives the context size limit without a paid request", async () => {
+  const run = await startPlanning({ ...defaults, budgetCents: 50000 }, "context recovery");
+  const plan = makePlan(recipes, run.preferences, run.week);
+  plan.simulationQuote = {
+    revision: plan.revision, totalCents: plan.totalCents,
+    missingItems: [], mockItemsCents: 0, feeCents: 0, taxCents: 0,
+  };
+  run.candidate = plan;
+  run.input.push({ role: "user", content: "x".repeat(50000) });
+  await saveRun(run);
+  const original = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    throw new Error("Unexpected paid API request");
+  };
+  try {
+    await driveAgent(run.id);
+  } finally {
+    globalThis.fetch = original;
+  }
+  const saved = await getRun(run.id);
+  assert.equal(requests, 0);
+  assert.equal(saved?.status, "awaiting_approval");
+  assert.equal(saved?.error, undefined);
+  const proposal = (await readState()).plans.find(p => p.id === saved?.planId)!;
+  assert.equal(proposal.status, "draft");
+  assert.equal(proposal.approvedRevision, undefined);
+});
 test("server cache expires and requests can exceed 20 per day while enforcing the lifetime cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);
   assert.deepEqual(await cached("test"), { answer: 42 });

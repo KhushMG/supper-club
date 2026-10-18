@@ -42,19 +42,45 @@ export function tool(
   };
 }
 export function compactInput(input: unknown[]): unknown[] {
-  return input.map((value) => {
+  const parsed = input.map((value) => {
+    const item = value as Record<string, unknown>;
+    if (item.type !== "function_call_output" || typeof item.output !== "string")
+      return undefined;
+    try {
+      return JSON.parse(item.output);
+    } catch {
+      return undefined;
+    }
+  });
+  const latestProducts = parsed.findLastIndex((data) =>
+    Array.isArray(data?.products),
+  );
+  const latestRecipes = parsed.findLastIndex((data) =>
+    Array.isArray(data?.recipes),
+  );
+  return input.map((value, index) => {
     const item = value as Record<string, unknown>;
     if (item.type !== "function_call_output" || typeof item.output !== "string")
       return value;
     try {
-      const data = JSON.parse(item.output);
+      const data = parsed[index];
+      if (!data) return value;
       if (Array.isArray(data.recipes))
         data.recipes = data.recipes.map((r: Record<string, unknown>) => ({
           ...r,
-          ingredients: Array.isArray(r.ingredients)
-            ? r.ingredients.slice(0, 8)
-            : r.ingredients,
+          ingredients:
+            index === latestRecipes && Array.isArray(r.ingredients)
+              ? r.ingredients.slice(0, 8)
+              : undefined,
         }));
+      delete data.availableRecipes;
+      if (index !== latestProducts && Array.isArray(data.products)) {
+        data.productCount = data.products.length;
+        data.superseded =
+          "Historical quote. Use the latest basket for current prices and product choices.";
+        delete data.products;
+        delete data.simulationQuote;
+      }
       if (Array.isArray(data.products)) {
         const unique = new Map<string, Record<string, unknown>>();
         for (const p of data.products) {

@@ -1,3 +1,4 @@
+import { validSimulation } from "./simulation";
 import { searchRecipeWeb } from "./recipe-search";
 import { z } from "zod";
 import { fetchRecipe } from "./recipes";
@@ -490,6 +491,24 @@ export async function agentTool(
     const plan = run.candidate;
     if (!plan?.simulationQuote || plan.totalCents > run.preferences.budgetCents)
       throw new Error("Build a priced basket within budget first.");
+    if (!validSimulation(plan))
+      throw new Error(
+        "Rebuild the basket: its simulation quote is stale or inconsistent.",
+      );
+    if (
+      plan.meals.length !== run.preferences.days.length ||
+      new Set(plan.meals.map((m) => m.day)).size !==
+        run.preferences.days.length ||
+      plan.meals.some(
+        (m) =>
+          !run.preferences.days.includes(m.day) ||
+          !compatible(m.recipe, run.preferences) ||
+          !run.preferences.cuisines.includes(m.recipe.cuisine),
+      )
+    )
+      throw new Error(
+        "Rebuild the basket to match every requested day and preference.",
+      );
     if (plan.meals.some((m) => !withinCookingLimit(m.recipe)))
       throw new Error(
         "Choose recipes with verified total preparation and cooking time of 60 minutes or less.",
@@ -526,6 +545,22 @@ export async function agentTool(
     return { stopped: true };
   }
   throw new Error("Unknown tool.");
+}
+export async function saveReadyProposal(run: AgentRun) {
+  if (run.kind !== "planning" || !run.candidate)
+    throw new Error("No planning proposal to recover.");
+  await agentTool(run, "save_proposal", {
+    summary: `Your selected dinners take at most 60 minutes each. The weekly simulation total is $${(run.candidate.totalCents / 100).toFixed(2)}, including mock delivery, tax and any unpriced items. Review the meals and basket before approving the order.`,
+  });
+  delete run.error;
+  delete run.pending;
+  run.trace.push({
+    at: new Date().toISOString(),
+    tool: "save_proposal",
+    summary:
+      "Saved the verified basket without another model request; order approval is still required.",
+  });
+  await saveRun(run);
 }
 export async function driveAgent(id: string) {
   if (!(await claimRun(id))) return;
@@ -599,8 +634,21 @@ export async function driveAgent(id: string) {
     }
   } catch (e) {
     if (run) {
+      const message = e instanceof Error ? e.message : "Agent failed";
+      if (
+        run.kind === "planning" &&
+        /Agent (context limit|reached its call limit)/.test(message) &&
+        run.candidate
+      ) {
+        try {
+          await saveReadyProposal(run);
+          return;
+        } catch {
+          /* An invalid, stale or over-budget basket must still stop. */
+        }
+      }
       run.status = "failed";
-      run.error = e instanceof Error ? e.message : "Agent failed";
+      run.error = message;
       await saveRun(run);
     }
   } finally {
