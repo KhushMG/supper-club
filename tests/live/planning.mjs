@@ -59,6 +59,8 @@ try {
   assert.equal(plan.simulationQuote?.mockItemsCents, 0);
   assert.ok(run.trace.some(step=>step.tool==='build_basket'), "Must actually build a basket");
   assert.equal(plan.meals.length, plan.preferences.days.length);
+  if (process.env.LIVE_TEST_REQUIRE_VARIETY === '1') assert.equal(new Set(plan.meals.map(m=>m.recipe.title.toLowerCase())).size, plan.meals.length, 'Every dinner must be distinct in this scenario');
+  assert.ok(run.trace.some(step=>step.display), 'Agent actions must have a user-facing description');
   for (const cuisine of plan.preferences.cuisines) assert.ok(plan.meals.some(m=>m.recipe.cuisine===cuisine));
   for (const {recipe} of plan.meals) {
     assert.ok(recipe.minutes > 0 && recipe.minutes <= 60);

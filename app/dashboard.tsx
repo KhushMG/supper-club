@@ -1,4 +1,6 @@
 "use client";
+import { OrderReview } from "./order-review";
+import { AgentProgress } from "./agent-progress";
 import { validSimulation } from "@/lib/simulation";
 import { fulfillmentLabels } from "@/lib/simulated-provider";
 import { initials, type Profile } from "@/lib/auth-profile";
@@ -85,6 +87,7 @@ export default function Dashboard() {
       id: string;
       revision: number;
     }>(),
+    [orderReview, setOrderReview] = useState<Plan>(),
     [orderComplete, setOrderComplete] = useState<Plan>(),
     [detail, setDetail] = useState<Recipe>(),
     [swap, setSwap] = useState<number>(),
@@ -157,7 +160,7 @@ export default function Dashboard() {
       ).then((ok) => {
         if (ok)
           setNotice(
-            "Stripe test checkout checked. See the payment status below.",
+            "Payment status checked. See the payment status below.",
           );
         history.replaceState({}, "", "/");
       });
@@ -224,6 +227,7 @@ export default function Dashboard() {
     if (
       !settings &&
       !orderComplete &&
+      !orderReview &&
       detail === undefined &&
       swap === undefined
     )
@@ -262,6 +266,7 @@ export default function Dashboard() {
         setDetail(undefined);
         setSwap(undefined);
         setOrderComplete(undefined);
+        setOrderReview(undefined);
       }
     };
     window.addEventListener("keydown", f);
@@ -269,7 +274,7 @@ export default function Dashboard() {
       window.removeEventListener("keydown", f);
       restore();
     };
-  }, [settings, detail, swap, orderComplete]);
+  }, [settings, detail, swap, orderComplete, orderReview]);
   const plan = data?.plans.find((p) => p.id === data.activePlanId),
     payments = data?.payments.filter((p) => p.planId === plan?.id) ?? [];
   useEffect(() => {
@@ -306,10 +311,16 @@ export default function Dashboard() {
       setPendingOrder(undefined);
     }
   }, [data, pendingOrder]);
+  const approving = useRef(false);
   async function approveOrder() {
-    if (!plan) return;
-    setPendingOrder({ id: plan.id, revision: plan.revision });
-    if (!(await planAction("plans/approve"))) setPendingOrder(undefined);
+    if (!orderReview || approving.current) return;
+    approving.current = true;
+    const reviewed = orderReview;
+    setOrderReview(undefined);
+    setPendingOrder({ id: reviewed.id, revision: reviewed.revision });
+    try {
+      if (!(await act("plans/approve", {planId:reviewed.id,revision:reviewed.revision}))) setPendingOrder(undefined);
+    } finally { approving.current = false; }
   }
   const selected = plan?.preferences ?? preferences;
   const total = plan?.totalCents ?? 0;
@@ -447,11 +458,11 @@ export default function Dashboard() {
               plan.totalCents > plan.preferences.budgetCents ||
               plan.batches.some((b) => !!b.orderId)
             }
-            onClick={approveOrder}
+            onClick={() => plan && setOrderReview(structuredClone(plan))}
           >
             <span className="approval-step">2</span>{" "}
             {pendingOrder
-              ? "Placing test order…"
+              ? "Placing your order…"
               : plan?.status === "approved"
                 ? "Week & order approved"
                 : "Approve week & order"}
@@ -462,7 +473,7 @@ export default function Dashboard() {
               : plan?.status === "approved"
                 ? "Order approved · agent handles execution"
                 : plan?.simulationQuote
-                  ? `Authorize the ${money(plan.totalCents)} test order`
+                  ? `Review the ${money(plan.totalCents)} order`
                   : "Available when your proposal is ready"}
           </small>
           {plan?.status === "approved" && (
@@ -587,7 +598,7 @@ export default function Dashboard() {
                     ? "Real recipe ingredients, grouped into practical delivery batches."
                     : tab === "deliveries"
                       ? "Ingredients arrive before you tie on your apron."
-                      : "Every plan, approval, and sandbox order in one place."}
+                      : "Every plan, approval, and order in one place."}
               </p>
             </div>
             <button className="secondary" onClick={() => setSettings(true)}>
@@ -629,13 +640,14 @@ export default function Dashboard() {
                 </h2>
                 <p>
                   {placingOrder
-                    ? "Confirming your test payment and scheduling this week’s simulated deliveries. Hang tight!"
+                    ? "Confirming payment and scheduling your deliveries. Demo mode: no real charge or grocery delivery."
                     : "Searching recipes, gathering ingredients, and making it all fit your budget."}
                 </p>
                 <small>
                   This can take a minute. We’ll let you know when it’s ready.
                 </small>
               </div>
+              <AgentProgress run={runningAgent} />
               {!placingOrder && (
                 <div className="meal-grid skeleton-menu" aria-hidden="true">
                   {Array.from(
@@ -730,6 +742,7 @@ export default function Dashboard() {
                     </div>
 
                   </div>
+                  <AgentProgress compact run={data?.agentRuns?.find(r => r.kind === "planning" && r.planId === plan?.id && r.status === "awaiting_approval")} />
                   <div className="planner-layout">
                     <div>
                       <div className="meal-grid">
@@ -901,7 +914,7 @@ export default function Dashboard() {
                           <span className="status draft">{plan.retailBasket.unresolved > 0 ? `${plan.retailBasket.unresolved} ${plan.retailBasket.unresolved === 1 ? "item needs" : "items need"} review` : "All items priced"}</span>
                         </div>
                         <p className="pricing-updated">Updated {new Date(plan.retailBasket.fetchedAt).toLocaleString("en-US", {month:"short", day:"numeric", hour:"numeric", minute:"2-digit", hour12:true})}</p>
-                        <p>{plan.simulationQuote ? "Test checkout uses Kroger product prices plus simulated delivery and tax. No real groceries are purchased." : "Final fees, tax, tips, and availability are not confirmed. Real purchases are on hold."}</p>
+                        <p>{plan.simulationQuote ? "Demo mode uses real Kroger product prices with simulated payments, delivery, and tax. No real groceries are purchased." : "Final fees, tax, tips, and availability are not confirmed. Real purchases are on hold."}</p>
                         {plan.retailBasket.unresolved > 0 && <details className="pricing-review">
                           <summary>Needs review · ingredients without confirmed prices</summary>
                           <p>Unavailable products are hidden from the shopping list. These ingredients still need a match.</p>
@@ -1088,7 +1101,7 @@ export default function Dashboard() {
                       scheduled times.
                     </div>
                   )}
-                  {payments.length > 0 && <section className="panel"><h3>Test payments</h3>{payments.map(p => <div className="payment-status" key={p.id}><span className={"status " + p.status}>{p.status}</span>{money(p.amountCents)}{p.status === "paid" && p.sessionId && <Link className="text-button" href={"/checkout/success?session_id=" + encodeURIComponent(p.sessionId)}>View receipt</Link>}</div>)}</section>}
+                  {payments.length > 0 && <section className="panel"><h3>Payments · Demo mode</h3>{payments.map(p => <div className="payment-status" key={p.id}><span className={"status " + p.status}>{p.status}</span>{money(p.amountCents)}{p.status === "paid" && p.sessionId && <Link className="text-button" href={"/checkout/success?session_id=" + encodeURIComponent(p.sessionId)}>View receipt</Link>}</div>)}</section>}
                   <p className="muted">
                     {data?.integrations.lastJobAt
                       ? "Last scheduled runner: " +
@@ -1205,6 +1218,7 @@ export default function Dashboard() {
           </button>
         </div>
       )}
+      {orderReview && <OrderReview plan={orderReview} onClose={() => setOrderReview(undefined)} onConfirm={approveOrder} />}
       {orderComplete && (
         <div className="modal-backdrop">
           <section
@@ -1221,9 +1235,9 @@ export default function Dashboard() {
               <X />
             </button>
             <CheckCircle2 size={42} />
-            <h2 id="order-complete-title">Test checkout complete</h2>
+            <h2 id="order-complete-title">Order confirmed</h2>
             <p>
-              Your agent confirmed the {money(orderComplete.totalCents)} test
+              Your agent confirmed the {money(orderComplete.totalCents)} demo
               payment for the week of {prettyDate(orderComplete.week)} and
               scheduled your simulated deliveries.
             </p>

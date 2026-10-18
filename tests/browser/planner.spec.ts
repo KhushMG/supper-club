@@ -70,7 +70,8 @@ test("completion waits for verified execution and opens the ordered week", async
   plan.agentError = undefined;
   plan.agentPaidRevision = undefined;
   plan.totalCents = 1000;
-  plan.batches.forEach((b:any,i:number)=>{b.totalCents=i===0?1000:0;});
+  plan.batches.forEach((b:any,i:number)=>{b.totalCents=i===0?1000:0;b.subtotalCents=b.totalCents;b.feeCents=0;b.taxCents=0;b.tipCents=0;});
+  plan.retailBasket={environment:'production',storeId:'fixture',storeName:'Kroger fixture store',fetchedAt:new Date().toISOString(),subtotalCents:1000,unresolved:0,finalTotalCents:null,batches:plan.batches.map((b:any,i:number)=>({batchId:b.id,subtotalCents:i===0?1000:0,lines:i===0?[{name:'rice',description:'Brown Rice',unit:'g',required:100,pantryUsed:0,productId:'rice',size:'16 oz',packages:2,unitPriceCents:500,totalCents:1000}]:[]}))};
   plan.simulationQuote = {
     revision: plan.revision,
     totalCents: 1000,
@@ -84,6 +85,7 @@ test("completion waits for verified execution and opens the ordered week", async
   });
   state.activePlanId = plan.id;
   state.agentRuns = [];
+  let approvalRequests = 0;
   let verified = false;
   let selected = "";
   await page.route("**/api/state", (route) => {
@@ -94,6 +96,8 @@ test("completion waits for verified execution and opens the ordered week", async
     return route.fulfill({ json: state });
   });
   await page.route("**/api/plans/approve", (route) => {
+    approvalRequests++;
+    expect(route.request().postDataJSON()).toEqual({planId:plan.id,revision:plan.revision});
     plan.status = "approved";
     plan.approvedRevision = plan.revision;
     state.agentRuns = [
@@ -116,6 +120,20 @@ test("completion waits for verified execution and opens the ordered week", async
     page.getByText("AI agent activity", { exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Approve week & order" }).click();
+  await expect(page.getByRole('dialog')).toContainText('Ready to stock your kitchen?');
+  await expect(page.getByRole('dialog')).toContainText('Demo mode.');
+  await expect(page.getByRole('row').filter({hasText:'Brown Rice'})).toContainText('2');
+  await expect(page.getByRole('row').filter({hasText:'Brown Rice'})).toContainText('$10.00');
+  expect(approvalRequests).toBe(0);
+  await page.getByRole('button',{name:'Keep reviewing'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(approvalRequests).toBe(0);
+  await page.getByRole('button',{name:'Approve week & order'}).click();
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.getByRole('button',{name:/Confirm & place order/}).click();
+  expect(approvalRequests).toBe(1);
+
   await expect(page.getByText("ONE LESS THING ON YOUR PLATE", {exact:true})).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
@@ -124,7 +142,7 @@ test("completion waits for verified execution and opens the ordered week", async
   await expect(page.locator(".kitchen-toast")).toHaveCount(0);
   verified = true;
   await expect(
-    page.getByRole("heading", { name: "Test checkout complete" }),
+    page.getByRole("heading", { name: "Order confirmed" }),
   ).toBeVisible({ timeout: 10000 });
   const deliveryLink=page.getByRole("link", { name: "View this week’s deliveries" });
   await expect(deliveryLink).toHaveAttribute('href',`/deliveries/${plan.id}`);
@@ -145,7 +163,7 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
   state.plans = [plan];
   state.activePlanId = plan.id;
   state.agentRuns = [
-    { id: "planning-loading", kind: "planning", status: "running" },
+    { id: "planning-loading", kind: "planning", status: "running", currentAction:"Looking for matching Kroger packages and prices", trace:[{at:"2026-10-18",tool:"search_recipes",summary:"internal",display:"Retrieved 3 published recipes with ingredients and cooking times."}] },
   ];
   let ready = false;
   await page.route("**/api/state", (route) => {
@@ -159,6 +177,8 @@ test("planning displays skeleton menus and a toast until the proposal is ready",
   await expect(page.locator(".skeleton-card")).toHaveCount(
     defaults.days.length,
   );
+  await expect(page.getByRole("region",{name:"Agent progress"})).toContainText("Looking for matching Kroger packages and prices");
+  await expect(page.getByRole("region",{name:"Agent progress"})).toContainText("Retrieved 3 published recipes");
   await expect(page.locator(".kitchen-toast")).toHaveCount(0);
   await expect(page.locator(".loading-emblem")).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });

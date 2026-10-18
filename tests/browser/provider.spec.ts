@@ -20,7 +20,7 @@ test('confirmed delivery persists, fast demo advances after navigation, and canc
  try {
    await page.goto(`/deliveries/${plan.id}`);
    await expect(page.locator('.delivery-status').first()).toHaveText('Confirmed');
-   await expect(page.getByText('Test order — no groceries purchased').first()).toBeVisible();
+   await expect(page.getByText('Demo mode · No real groceries purchased').first()).toBeVisible();
    await page.getByText('Demo controls',{exact:true}).click();
    await page.getByRole('button',{name:'Run fast delivery demo'}).click();
    await expect(page.getByText('Fast demo · simulated arrival',{exact:false}).first()).toBeVisible();
@@ -41,7 +41,7 @@ test('confirmed delivery persists, fast demo advances after navigation, and canc
    await expect(card.locator('.delivery-status')).toHaveText('Out for delivery');
    await card.getByRole('button',{name:'Next stage: Delivered',exact:true}).click();
    await expect(card.locator('.delivery-status')).toHaveText('Delivered');
-   await expect(card.getByRole('status')).toHaveText('Delivery complete. Your test order and receipt are saved.');
+   await expect(card.getByRole('status')).toHaveText('Delivery complete. Your order and receipt are saved.');
    await expect(card.getByRole('button',{name:/Next stage/})).toHaveCount(0);
    await page.setViewportSize({width:390,height:844});
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

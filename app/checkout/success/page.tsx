@@ -35,7 +35,7 @@ export default async function Receipt({
           </span>
           supper club<span className="brand-dot">.</span>
         </div>
-        <p className="eyebrow">STRIPE TEST CHECKOUT</p>
+        <p className="eyebrow">PAYMENT RECEIPT · DEMO MODE</p>
         {paid && <CheckCircle2 size={48} color="#315c45" aria-hidden="true" />}
         <h1>
           {paid
@@ -46,7 +46,7 @@ export default async function Receipt({
         </h1>
         <p>
           {paid
-            ? "Your test payment is confirmed. Your weekly dinner plan is ready to view."
+            ? "Your payment is confirmed. Your weekly dinner plan is ready to view."
             : expired
               ? "This checkout timed out. Return to your plan to start a new checkout."
               : "We could not confirm a completed payment. Check again before starting another checkout."}
@@ -65,7 +65,7 @@ export default async function Receipt({
           </p>
         )}
         <p>
-          No real money moved. This test payment does not purchase groceries.
+          No real money moved. Demo payments do not purchase groceries.
         </p>
         <Link className="primary" href="/">
           Back to my dinner plan

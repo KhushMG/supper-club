@@ -209,3 +209,10 @@ test('alternate metric amounts and publisher notes do not become product names',
  for(const [ingredient,description] of [["stalk celery","Celery"],["squeeze of lime juice","Lime Juice"],["thai sweet chile sauce","Thai Sweet Chili Sauce"],["/ 180g spaghetti pasta","Spaghetti Pasta"],["/ 300g ripe tomatoes - i've used a mix of roma and grape tomatoes. canned is great too","Ripe Tomatoes"],["finely grated parmesan cheese - optional","Grated Parmesan Cheese"],["handful fresh basil leaves","Fresh Basil Leaves"],["a pinch of white pepper","White Pepper"],["or 7 ml light soy sauce","Light Soy Sauce"]])
   assert.ok(parseProduct({data:[product(description)]},ingredient),ingredient);
 });
+
+test('leaf and slice measures match whole packages without matching unrelated foods',()=>{
+ assert.ok(parseProduct({data:[product('Fresh Basil')]},'leaves fresh basil'));
+ assert.ok(parseProduct({data:[product('Sourdough Bread')]},'slices sourdough bread'));
+ assert.equal(parseProduct({data:[product('Basil Pesto')]},'leaves fresh basil'),undefined);
+ assert.equal(parseProduct({data:[product('White Bread')]},'slices sourdough bread'),undefined);
+});

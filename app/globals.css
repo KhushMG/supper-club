@@ -1987,3 +1987,27 @@ textarea {
 .demo-controls { margin-top:12px; max-width:300px; font-size:14px; }
 .demo-controls summary { cursor:pointer; }
 @media(max-width:600px) { .fulfillment-timeline { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+.agent-progress { max-width: 760px; margin: 0 auto 28px; padding: 20px 24px; border: 1px solid var(--line, #d8dfd0); border-radius: 16px; background: #f4f6ef; text-align: left; overflow-wrap: anywhere; }
+.agent-current { display: flex; align-items: baseline; gap: 12px; font-weight: 600; margin: 0 0 14px; }
+.agent-dot { flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.agent-steps { list-style: none; padding: 0; margin: 12px 0; }
+.agent-steps li { display: flex; gap: 12px; margin: 10px 0; line-height: 1.5; }
+.agent-steps li > span:first-child { flex: 0 0 14px; color: var(--green); }
+.agent-progress small { display: block; color: var(--muted); margin-top: 14px; }
+.agent-progress summary { cursor: pointer; font-weight: 600; }
+.agent-progress-saved { max-width: none; margin: 0 0 24px; }
+
+.order-review { width: min(760px, calc(100vw - 32px)); }
+.checkout-demo { background: #edf1e6; padding: 12px 16px; border-radius: 10px; font-size: .9rem; line-height: 1.5; }
+.checkout-items { max-height: 260px; overflow: auto; margin: 18px 0; }
+.checkout-items table { width: 100%; border-collapse: collapse; }
+.checkout-items th, .checkout-items td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #d8dfd0; }
+.checkout-items th:last-child, .checkout-items td:last-child { text-align: right; white-space: nowrap; }
+.checkout-items small { display: block; color: var(--muted); margin-top: 3px; }
+.checkout-totals div { display: flex; justify-content: space-between; gap: 16px; margin: 8px 0; }
+.checkout-totals dd { margin: 0; }
+.checkout-total { font-size: 1.3rem; font-weight: 600; padding-top: 12px; border-top: 1px solid #d8dfd0; }
+.checkout-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.checkout-actions .primary { flex: 1; }
+@media(max-width:600px) { .checkout-actions button { width: 100%; } .checkout-items { font-size: .9rem; } }

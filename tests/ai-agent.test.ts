@@ -297,7 +297,7 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
   run.catalog=[expensive];
   run.budgetResearchAttempts=20;
   for (const [name,cents] of [["rice",10000],["beans",100]] as const) {
-    await cachePut("kroger-v6:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
+    await cachePut("kroger-v7:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
       provider:"Kroger",environment:"production",storeId:"fixture",storeName:"Fixture",fetchedAt:new Date().toISOString(),
       items:[{ingredient:name,productId:name,description:name,size:"16 oz",regularCents:cents}],
     },60000);
@@ -335,7 +335,7 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
 });
 test("new searches stay on the upcoming week despite existing draft history", async () => {
   const week=nextMonday(new Date(),defaults.timezone);
-  const first=await startPlanning({...defaults,budgetCents:50000},"same week fixture");
+  const first=await startPlanning({...defaults,days:[0],cuisines:[recipes[0].cuisine],budgetCents:50000},"same week fixture");
   assert.equal(first.week,week);
   const plan=makePlan(recipes,first.preferences,first.week);
   plan.simulationQuote={revision:plan.revision,totalCents:plan.totalCents,missingItems:[],mockItemsCents:0,feeCents:0,taxCents:0};
@@ -374,11 +374,11 @@ test("a failed extra publisher fetch cannot justify claiming basket tools are un
 });
 
 test("unpriced ingredients below budget allow another product/basket attempt", async()=>{
- const prefs={...defaults,cuisines:["Italian"],budgetCents:20000};
+ const prefs={...defaults,days:[0],cuisines:["Italian"],budgetCents:20000};
  const run=await startPlanning(prefs,"unpriced recovery");
  const recipe={...recipes[0],id:"unpriced-rice",cuisine:"Italian",minutes:30,ingredients:["100 g rice"]};
  run.catalog=[recipe];
- await cachePut("kroger-v6:"+cacheKey({environment:"production",zip:prefs.zip,names:["rice"]}),{provider:"Kroger",environment:"production",storeId:"fixture",storeName:"Fixture",fetchedAt:new Date().toISOString(),items:[{ingredient:"rice",error:"Unavailable"}]},60000);
+ await cachePut("kroger-v7:"+cacheKey({environment:"production",zip:prefs.zip,names:["rice"]}),{provider:"Kroger",environment:"production",storeId:"fixture",storeName:"Fixture",fetchedAt:new Date().toISOString(),items:[{ingredient:"rice",error:"Unavailable"}]},60000);
  const args={meals:prefs.days.map(day=>({day,recipeId:recipe.id})),selections:[]};
  await agentTool(run,"build_basket",args);
  assert.equal(run.candidate?.simulationQuote,undefined);
@@ -394,6 +394,15 @@ test("unpriced ingredients below budget allow another product/basket attempt", a
  await agentTool(run,"build_basket",selected);
  assert.ok(run.candidate?.simulationQuote);
  assert.equal(run.candidate?.retailBasket?.unresolved,0);
+ run.status="failed";await saveRun(run);
+});
+test("duplicate dinners require actual budget recovery, including alternate publisher IDs", async()=>{
+ const run=await startPlanning({...defaults,days:[0,1],cuisines:["Italian"]},"variety regression");
+ const first={...recipes[0],id:"pasta-one",title:"Simple Pasta",cuisine:"Italian",minutes:30};
+ const copy={...first,id:"pasta-two",source:"https://other.example/pasta"};
+ run.catalog=[first,copy];
+ await assert.rejects(()=>agentTool(run,"build_basket",{meals:[{day:0,recipeId:first.id},{day:1,recipeId:copy.id}],selections:[]}),/distinct dinner/);
+ assert.equal(run.candidate,undefined);
  run.status="failed";await saveRun(run);
 });
 test("server cache expires and usage remains accurate beyond the former 200-call cap", async () => {

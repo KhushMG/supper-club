@@ -50,7 +50,7 @@ export function normalizeIngredient(search: string) {
     .replace(/\s+\d+\.\d+\)?$/, "")
     .replace(/[()]/g, " ")
     .replace(/^(?:\/|or)\s*\d+(?:\.\d+)?\s*(?:g|kg|ml|l|oz)\s+/i, "")
-    .replace(/^(?:(?:a\s+)?pinch(?:\s+of)?|handfuls?|stalks?|squeeze(?:\s+of)?|finely\s+grated)\s+/i, "")
+    .replace(/^(?:(?:a\s+)?pinch(?:\s+of)?|handfuls?|stalks?|leaves|slices?|squeeze(?:\s+of)?|finely\s+grated)\s+/i, "")
     .replace(/\s+[-–—]\s+(?:optional|i(?:'|’)ve|for serving|to taste)\b.*$/i, "")
     .replace(/^\d+(?:\.\d+)?(?:\s+or\s+\d+(?:\.\d+)?)?[ -]*(?:oz|ounce|lb|pound)s?\.?\s+(?:cans?|jars?|packages?|packets?)\s+/i, "")
     .replace(/^(?:(?:c\.|cups?|units?|extra|pinch|to serve|for serving|peeled|warmed|grated|shredded|sliced)\s+)+/, "")
@@ -177,6 +177,7 @@ function matchingProducts(data: unknown, search?: string) {
         "soda",
         "candy",
         "paste",
+        "pesto",
         "mozzarella",
       ];
       if (
@@ -423,7 +424,7 @@ export async function livePrices(
     ...new Set(plan.batches.flatMap((b) => b.groceries.map((g) => g.name))),
   ];
   const key =
-    "kroger-v6:" +
+    "kroger-v7:" +
     cacheKey({
       environment: krogerEnvironment(),
       zip: plan.preferences.zip,

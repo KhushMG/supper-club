@@ -12,7 +12,8 @@ export type AgentRun = {
   feedback: string;
   calls: number;
   cacheHits: number;
-  trace: { at: string; tool: string; summary: string }[];
+  trace: { at: string; tool: string; summary: string; display?: string; failed?: boolean }[];
+  currentAction?: string;
   input: unknown[];
   pending?: ModelItem[];
   catalog: Recipe[];
@@ -37,6 +38,7 @@ export type AgentRunSummary = Pick<
   | "calls"
   | "cacheHits"
   | "trace"
+  | "currentAction"
   | "revision"
   | "planId"
   | "error"
@@ -52,6 +54,7 @@ export function publicRun(r: AgentRun): AgentRunSummary {
     calls,
     cacheHits,
     trace,
+    currentAction,
     planId,
     revision,
     error,
@@ -66,6 +69,7 @@ export function publicRun(r: AgentRun): AgentRunSummary {
     calls,
     cacheHits,
     trace,
+    currentAction,
     planId,
     revision,
     error,

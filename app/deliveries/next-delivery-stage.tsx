@@ -17,7 +17,7 @@ export default function NextDeliveryStage({planId,batchId,stage}:{planId:string;
     finally{setBusy(false);}
   }
   return <div className="delivery-demo-step">
-    {next ? <><button className="secondary" disabled={busy||pending} onClick={advance}>{busy||pending?'Updating…':`Next stage: ${fulfillmentLabels[next]}`}</button><p className="muted">Demo control · switches this delivery to manual progress.</p></> : <p role="status">{stage==='delivered'?'Delivery complete. Your test order and receipt are saved.':'This test delivery was cancelled.'}</p>}
+    {next ? <><button className="secondary" disabled={busy||pending} onClick={advance}>{busy||pending?'Updating…':`Next stage: ${fulfillmentLabels[next]}`}</button><p className="muted">Demo control · switches this delivery to manual progress.</p></> : <p role="status">{stage==='delivered'?'Delivery complete. Your order and receipt are saved.':'This delivery was cancelled.'}</p>}
     {error&&<p role="alert" className="error">{error}</p>}
   </div>;
 }

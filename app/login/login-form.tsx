@@ -67,7 +67,7 @@ export default function LoginForm({ googleEnabled, authError, returnTo }: { goog
           </button>
         </form>}
         {googleEnabled && error && <p className="error" role="alert">{error}</p>}
-        <small>Private prototype · Test payments only</small>
+        <small>Demo mode · No real charges or grocery delivery</small>
       </div>
     </main>
   );
