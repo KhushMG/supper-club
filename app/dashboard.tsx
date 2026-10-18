@@ -47,7 +47,7 @@ type Data = State & {
     calls: number;
     estimatedUsd: number;
     dailyCallLimit: number | null;
-    lifetimeCallLimit: number;
+    lifetimeCallLimit: number | null;
   };
   recipes: Recipe[];
   integrations: {

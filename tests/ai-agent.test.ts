@@ -404,14 +404,17 @@ test("new searches stay on the upcoming week despite existing draft history", as
   assert.equal(state.plans.find(p=>p.id===state.activePlanId)?.week,week);
   assert.ok(state.plans.some(p=>p.id===first.planId));
 });
-test("server cache expires and requests can exceed 20 per day while enforcing the lifetime cap", async () => {
+test("server cache expires and usage remains accurate beyond the former 200-call cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);
   assert.deepEqual(await cached("test"), { answer: 42 });
   await cachePut("expired", { answer: 42 }, -1);
   assert.equal(await cached("expired"), undefined);
   const before = await usageSummary();
   for (let i = before.calls; i < 200; i++) await reserveCall();
-  await assert.rejects(() => reserveCall(), /spending guard/);
-  assert.equal((await usageSummary()).calls, 200);
+  await Promise.all(Array.from({length: 5}, () => reserveCall()));
+  const after = await usageSummary();
+  assert.equal(after.calls, 205);
+  assert.equal(after.lifetimeCallLimit, null);
+  assert.equal(after.dailyCallLimit, null);
   database().close();
 });
