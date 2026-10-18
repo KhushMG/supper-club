@@ -577,16 +577,22 @@ export default function Dashboard() {
                             disabled={
                               !!busy ||
                               plan.status === "infeasible" ||
-                              plan.pricingSource === "kroger"
+                              (plan.pricingSource === "kroger" && !plan.simulationQuote)
                             }
                             onClick={() => planAction("plans/approve")}
                           >
                             <Check size={17} />
-                            {plan.pricingSource === "kroger"
+                            {(plan.pricingSource === "kroger" && !plan.simulationQuote)
                               ? "Awaiting final quote"
                               : "Approve this week"}
                           </button>
                         )}
+                        {plan?.retailBasket && !plan.simulationQuote && (
+                          <button className="secondary" disabled={!!busy} onClick={() => planAction("sandbox/quote")}>
+                            Prepare test checkout
+                          </button>
+                        )}
+                        {plan?.simulationQuote && <p>SIMULATION: {money(plan.simulationQuote.mockItemsCents)} mock ingredients + {money(plan.simulationQuote.feeCents)} delivery + {money(plan.simulationQuote.taxCents)} tax. No real purchase.</p>}
                         <small>
                           {plan?.issue ?? "You’re always in control."}
                         </small>
@@ -666,8 +672,10 @@ export default function Dashboard() {
                           { hour12: true },
                         )}
                         . {plan.retailBasket.unresolved} items need review.
-                        Final delivery fees, tax, tips, and availability are not
-                        quoted; purchases are on hold.
+                        {plan.simulationQuote
+                          ? " Test checkout uses mock amounts for unpriced items and checkout charges. These are not Kroger quotes."
+                          : " Final delivery fees, tax, tips, and availability are not quoted; real purchases are on hold."}
+                        {plan.simulationQuote?.missingItems.map(item => <p key={item.name}>{item.name}: {money(item.amountCents)} mock package price (test only)</p>)}
                       </div>
                       {plan.retailBasket.batches.map((batch, i) => (
                         <section className="panel" key={batch.batchId}>
@@ -807,12 +815,12 @@ export default function Dashboard() {
                           </div>
                           <div className="schedule-row">
                             <span>
-                              {plan.pricingSource === "kroger"
+                              {(plan.pricingSource === "kroger" && !plan.simulationQuote)
                                 ? "Final total"
-                                : "Historical sandbox total"}
+                                : plan.simulationQuote ? "Simulation total" : "Historical sandbox total"}
                             </span>
                             <b>
-                              {plan.pricingSource === "kroger"
+                              {(plan.pricingSource === "kroger" && !plan.simulationQuote)
                                 ? "Awaiting quote"
                                 : money(b.totalCents)}
                             </b>
@@ -844,7 +852,7 @@ export default function Dashboard() {
                       <span className="eyebrow">STRIPE TEST MODE</span>
                       <h2>A checkout without the charge.</h2>
                       <p>
-                        {plan?.pricingSource === "kroger"
+                        {(plan?.pricingSource === "kroger" && !plan.simulationQuote)
                           ? "Checkout is on hold until every ingredient and the final all-in total are confirmed."
                           : `Test the approved ${money(total)} weekly total in Stripe Checkout.`}
                         <br />
@@ -864,7 +872,7 @@ export default function Dashboard() {
                           !plan ||
                           plan.status !== "approved" ||
                           !data?.integrations.stripe ||
-                          payments.some((p) => p.status === "paid")
+                          payments.some((p) => p.status === "paid" && p.revision === plan?.revision)
                         }
                         onClick={() =>
                           plan &&
@@ -876,7 +884,7 @@ export default function Dashboard() {
                         }
                       >
                         <CreditCard size={16} />
-                        {payments.some((p) => p.status === "paid")
+                        {payments.some((p) => p.status === "paid" && p.revision === plan?.revision)
                           ? "Test payment confirmed"
                           : "Try Stripe checkout"}
                         <ArrowUpRight size={15} />
@@ -1518,6 +1526,8 @@ function Budget({
 }) {
   const basket = plan?.retailBasket;
   const subtotal = basket?.subtotalCents ?? 0;
+  const simulation = plan?.simulationQuote;
+  const displayedTotal = simulation?.totalCents ?? subtotal;
   return (
     <div className="budget-card">
       <div className="budget-heading">
@@ -1528,13 +1538,13 @@ function Budget({
         </span>
       </div>
       <div className="budget-number">
-        {basket ? money(subtotal) : "Pending"}
+        {basket ? money(displayedTotal) : "Pending"}
         <span> / {money(budget)} cap</span>
       </div>
-      <p className={subtotal > budget ? "error" : "budget-room"}>
-        {subtotal > budget
+      <p className={displayedTotal > budget ? "error" : "budget-room"}>
+        {displayedTotal > budget
           ? "Priced items already exceed your cap. Purchases are blocked."
-          : "Priced groceries only—not the final weekly total."}
+          : simulation ? "Simulation total only. No real purchase." : "Priced groceries only—not the final weekly total."}
       </p>
       <div className="budget-breakdown">
         <div>
@@ -1542,17 +1552,17 @@ function Budget({
           <span>{basket ? money(subtotal) : "Pending"}</span>
         </div>
         <div>
-          <span>Items needing review</span>
-          <span>{basket?.unresolved ?? "Pending"}</span>
+          <span>{simulation ? "Mock missing items ($5 each)" : "Items needing review"}</span>
+          <span>{simulation ? money(simulation.mockItemsCents) : basket?.unresolved ?? "Pending"}</span>
         </div>
         <div>
           <span>Delivery, tax & tips</span>
-          <span>Awaiting quote</span>
+          <span>{simulation ? money(simulation.feeCents + simulation.taxCents) + " (mock)" : "Awaiting quote"}</span>
         </div>
       </div>
       <div className="budget-total">
         <span>Final weekly total</span>
-        <b>Not confirmed</b>
+        <b>{simulation ? money(simulation.totalCents) + " (test)" : "Not confirmed"}</b>
       </div>
       <small className="budget-commit">
         {basket?.environment === "certification"

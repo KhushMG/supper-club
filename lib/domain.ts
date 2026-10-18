@@ -1,3 +1,4 @@
+import { validSimulation } from "./simulation";
 import { z } from "zod";
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
 import type { Preferences, Recipe, Grocery, Plan, Batch, State } from "./types";
@@ -401,7 +402,7 @@ export function makePlan(
   return plan;
 }
 export function assertApprovable(p: Plan) {
-  if (p.pricingSource === "kroger")
+  if (p.pricingSource === "kroger" && !validSimulation(p))
     throw new Error(
       "Kroger product pricing is not a final checkout quote. Resolve all items and obtain delivery, tax, and fee totals before approving purchases.",
     );
@@ -432,7 +433,7 @@ export function pause(p: Plan) {
   });
 }
 export function processDue(p: Plan, now = new Date(), force = false) {
-  if (p.pricingSource === "kroger") return 0;
+  if (p.pricingSource === "kroger" && !validSimulation(p)) return 0;
   if (p.status !== "approved" || p.approvedRevision !== p.revision) return 0;
   let count = 0;
   let committed = p.batches

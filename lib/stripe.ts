@@ -1,3 +1,4 @@
+import { validSimulation } from "./simulation";
 import Stripe from "stripe";
 import { mutate, readState } from "./db";
 import { log } from "./domain";
@@ -54,7 +55,7 @@ export async function createCheckout(
       plan.approvedRevision !== plan.revision
     )
       throw new Error("Approve this plan before starting checkout.");
-    if (plan.pricingSource === "kroger")
+    if (plan.pricingSource === "kroger" && !validSimulation(plan))
       throw new Error(
         "A final all-in Kroger quote is required before checkout.",
       );

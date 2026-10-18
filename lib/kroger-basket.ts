@@ -206,6 +206,7 @@ export async function buildRetailBasket(plan: Plan): Promise<RetailBasket> {
   };
 }
 export async function pricePlan(plan: Plan) {
+  delete plan.simulationQuote;
   try {
     plan.retailBasket = await buildRetailBasket(plan);
     delete plan.pricingError;

@@ -52,6 +52,7 @@ export type Batch = {
   reason?: string;
 };
 export type Plan = {
+  simulationQuote?: import("./simulation").SimulationQuote;
   pricingSource?: "kroger";
   retailBasket?: import("./kroger-basket").RetailBasket;
   pricingError?: string;

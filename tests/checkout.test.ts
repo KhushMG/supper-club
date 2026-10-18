@@ -1,3 +1,4 @@
+import { prepareSimulation } from "../lib/simulation";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import Stripe from "stripe";
@@ -15,6 +16,10 @@ test("checkout sends approved server total to Stripe and reuses uncertain attemp
     { ...defaults, budgetCents: 50000 },
     "2030-04-01",
   );
+  p.pricingSource = "kroger";
+  p.retailBasket = {environment:"production",storeId:"fixture",storeName:"Test",fetchedAt:new Date().toISOString(),subtotalCents:p.batches.length*1000,unresolved:0,finalTotalCents:null,
+    batches:p.batches.map(b=>({batchId:b.id,lines:[],subtotalCents:1000}))};
+  prepareSimulation(p);
   approve(p);
   await mutate((s) => {
     s.plans = [p];

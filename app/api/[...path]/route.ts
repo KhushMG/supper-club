@@ -1,3 +1,4 @@
+import { prepareSimulation } from "@/lib/simulation";
 import { pricePlan } from "@/lib/kroger-basket";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -242,6 +243,7 @@ async function handle(req: Request) {
         p.revision++;
         quote(p);
         p.pricingSource = "kroger";
+        delete p.simulationQuote;
         log(s, "Meal swapped. Kroger prices are being refreshed.");
         return structuredClone(p);
       });
@@ -305,6 +307,19 @@ async function handle(req: Request) {
         log(s, "Sandbox cancellation confirmed.");
       });
       return json({ ok: true });
+    }
+    if (path === "sandbox/quote") {
+      const args = z.object({ planId: id, revision: z.number().int(), budgetCents: z.number().int().min(100).max(200000).optional() }).parse(body);
+      await mutate(s => {
+        const p = s.plans.find(p => p.id === args.planId);
+        if (!p || p.revision !== args.revision) throw new Error("Plan changed. Refresh first.");
+        if (s.payments.some(payment => payment.planId === p.id && ["open", "creating"].includes(payment.status)))
+          throw new Error("Resolve the open test checkout first.");
+        if (args.budgetCents !== undefined) p.preferences.budgetCents = args.budgetCents;
+        prepareSimulation(p);
+        log(s, "Prepared simulation quote: mock $5 per unpriced ingredient, $5.99 per delivery, 8% mock tax, no tip. No real purchase.");
+      });
+      return json({ok: true});
     }
     if (path === "groceries/prices") {
       const planId = id.parse(body.planId);
