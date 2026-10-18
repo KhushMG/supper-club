@@ -112,3 +112,34 @@ test("ingredients mentioned as additions are not standalone ingredient matches",
     undefined,
   );
 });
+
+test("nonfood categories and scented products cannot supply ingredient prices", () => {
+  assert.equal(
+    parseProduct(
+      {
+        data: [
+          {
+            ...product("Sea Salt & Driftwood Jar Candle"),
+            categories: ["Home Decor"],
+          },
+        ],
+      },
+      "salt",
+    ),
+    undefined,
+  );
+  assert.equal(
+    parseProduct(
+      { data: [{ ...product("Himalayan Salt"), categories: ["Home"] }] },
+      "salt",
+    ),
+    undefined,
+  );
+  assert.equal(
+    parseProduct(
+      { data: [{ ...product("Sea Salt"), categories: ["Baking Goods"] }] },
+      "salt",
+    )?.regularCents,
+    249,
+  );
+});

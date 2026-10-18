@@ -93,7 +93,24 @@ function matchingProducts(data: unknown, search?: string) {
     .filter((p) => {
       if (
         p.categories?.some((c) =>
-          /kitchen|household|cleaning|personal care|pet|hardware/i.test(c),
+          /kitchen|household|cleaning|personal care|pet|hardware|home decor|floral|beauty/i.test(
+            c,
+          ),
+        )
+      )
+        return false;
+      if (
+        p.categories?.length &&
+        !p.categories.some((c) =>
+          /produce|dairy|deli|meat|seafood|frozen|baking|spice|seasoning|condiment|sauce|pasta|grain|canned|packaged|beverage|breakfast|pantry|snack|bakery|international/i.test(
+            c,
+          ),
+        )
+      )
+        return false;
+      if (
+        /\b(candle|soap|shampoo|fragrance|scent|lamp|shaker|utensil)\b/i.test(
+          p.description,
         )
       )
         return false;
