@@ -124,3 +124,13 @@ test("next Monday uses household local date", () => {
     "2026-10-19",
   );
 });
+
+test("total recipe time is capped at 60 minutes for selection and approval", () => {
+  assert.equal(compatible({ ...recipes[0], minutes: 60 }, prefs()), true);
+  for (const minutes of [61, 90, 0, NaN, Infinity]) {
+    assert.equal(compatible({ ...recipes[0], minutes }, prefs()), false);
+    const p = draft();
+    p.meals[0] = { ...p.meals[0], recipe: { ...p.meals[0].recipe, minutes } };
+    assert.throws(() => approve(p), /60 minutes or less/);
+  }
+});

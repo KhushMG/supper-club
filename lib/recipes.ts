@@ -97,9 +97,10 @@ export function parseRecipePage(
         yields[0] ||
         "";
       const servings = Number(yieldText.match(/\d+(?:\.\d+)?/)?.[0]);
-      const minutes =
-        durationMinutes(node.totalTime) ||
-        durationMinutes(node.prepTime) + durationMinutes(node.cookTime);
+      const minutes = Math.max(
+        durationMinutes(node.totalTime),
+        durationMinutes(node.prepTime) + durationMinutes(node.cookTime),
+      );
       if (
         !title ||
         !ingredients.length ||

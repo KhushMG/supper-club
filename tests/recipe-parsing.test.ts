@@ -83,3 +83,15 @@ test("ranges use upper quantity and compact metric units remain measured", () =>
   assert.equal(ingredient("250g rice").quantity, 250);
   assert.equal(ingredient("1⁄2 cup rice").quantity, 120);
 });
+
+test("reported total cannot hide a longer prep plus cook duration", () => {
+  const r = parse(
+    page({
+      ...recipe,
+      totalTime: "PT30M",
+      prepTime: "PT45M",
+      cookTime: "PT30M",
+    }),
+  );
+  assert.equal(r.minutes, 75);
+});

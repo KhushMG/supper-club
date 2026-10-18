@@ -219,7 +219,16 @@ export function purchaseIngredient(raw: string) {
     return { ...ingredient("1 " + name), unit: "package", quantity: 1 };
   }
 }
+export const MAX_RECIPE_MINUTES = 60;
+export function withinCookingLimit(recipe: Recipe) {
+  return (
+    Number.isFinite(recipe.minutes) &&
+    recipe.minutes > 0 &&
+    recipe.minutes <= MAX_RECIPE_MINUTES
+  );
+}
 export function compatible(recipe: Recipe, p: Preferences) {
+  if (!withinCookingLimit(recipe)) return false;
   const s = recipe.ingredients.join(" ").toLowerCase();
   if (p.exclusions.some((x) => s.includes(x.toLowerCase()))) return false;
   if (
@@ -447,6 +456,10 @@ export function assertApprovable(p: Plan) {
     throw new Error("The delivery window has passed. Generate a future week.");
 }
 export function approve(p: Plan) {
+  if (p.meals.some((m) => !withinCookingLimit(m.recipe)))
+    throw new Error(
+      "Every dinner must have a verified total preparation and cooking time of 60 minutes or less. Replace longer recipes before approving.",
+    );
   assertApprovable(p);
   p.status = "approved";
   p.approvedRevision = p.revision;
