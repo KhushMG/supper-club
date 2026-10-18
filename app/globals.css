@@ -1907,3 +1907,5 @@ textarea {
 .ingredient-servings { display: inline-block; margin-left: 10px; font-size: .875rem; font-weight: 400; white-space: nowrap; }
 .ingredient-bullet { flex: 0 0 5px; height: 5px; border-radius: 50%; background: #758569; align-self: flex-start; margin-top: 11px; }
 .recipe-modal { overscroll-behavior: contain; }
+
+.search-error-toast { border-color: #b88470; background: #fff8f3; color: #713d2b; }

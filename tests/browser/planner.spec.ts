@@ -292,7 +292,7 @@ test("missing photos and non-image responses show a fallback in cards and recipe
   await expect.poll(()=>page.locator('.image-button img').first().evaluate((img:HTMLImageElement)=>img.naturalWidth)).toBeGreaterThan(0);
 });
 
-test("failed planning explains its budget blocker while preserving the user's cuisines", async ({page,request}) => {
+test("old failed searches do not display a persistent banner or repeat notifications", async ({page,request}) => {
   const state=await (await request.get('/api/state')).json();
   const plan=makePlan(recipes,defaults,'2030-04-01');
   state.preferences={...defaults,cuisines:['Japanese','Thai']};
@@ -300,8 +300,9 @@ test("failed planning explains its budget blocker while preserving the user's cu
   state.agentRuns=[{id:'over-budget',kind:'planning',status:'failed',error:'The replacement basket still exceeds your $275 budget. No order was placed.'}];
   await page.route('**/api/state',route=>route.fulfill({json:state}));
   await page.goto('/');
-  await page.getByText('Why this plan wasn’t saved',{exact:true}).click();
-  await expect(page.locator('details').getByText(state.agentRuns[0].error,{exact:true})).toBeVisible();
+  await expect(page.getByText('Why this plan wasn’t saved',{exact:true})).toHaveCount(0);
+  await expect(page.getByText('The latest dinner search didn’t finish.',{exact:false})).toHaveCount(0);
+  await expect(page.locator('.search-error-toast')).toHaveCount(0);
   await page.getByRole('button',{name:'Edit preferences',exact:true}).click();
   await expect(page.getByRole('button',{name:'Japanese',exact:true})).toHaveAttribute('aria-pressed','true');
   await expect(page.getByRole('button',{name:'Italian',exact:true})).toHaveAttribute('aria-pressed','false');
@@ -457,4 +458,23 @@ test("numeric fields allow backspacing and do not prefix typed amounts with zero
   await expect(tip).toHaveValue('5');
   await tip.press('Backspace'); await expect(tip).toHaveValue('');
   await tip.press('Tab'); await expect(tip).toHaveValue('');
+});
+
+
+test("a newly failed search shows one dismissible toast without a persistent banner",async({page,request})=>{
+  const state=await(await request.get('/api/state')).json();
+  const plan=makePlan(recipes,defaults,'2030-04-01');
+  state.plans=[plan];state.activePlanId=plan.id;
+  let failed=false;
+  await page.route('**/api/state',route=>route.fulfill({json:{...state,agentRuns:[{id:'new-failure',kind:'planning',status:failed?'failed':'running',error:failed?'The basket exceeds your budget. No order was placed.':undefined}]}}));
+  await page.goto('/');
+  await expect(page.locator('.skeleton-card').first()).toBeVisible();
+  failed=true;
+  const toast=page.locator('.search-error-toast');
+  await expect(toast).toContainText('The basket exceeds your budget.',{timeout:10000});
+  await expect(page.getByText('Why this plan wasn’t saved',{exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Dismiss search error',exact:true}).click();
+  await expect(toast).toHaveCount(0);
+  await page.reload(); await expect(page.locator('.image-button').first()).toBeVisible();
+  await expect(toast).toHaveCount(0);
 });

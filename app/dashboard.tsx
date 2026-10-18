@@ -85,6 +85,7 @@ export default function Dashboard() {
     [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
+    [searchError, setSearchError] = useState(""),
     [preferences, setPreferences] = useState<Preferences>(defaults),
     [feedback, setFeedback] = useState(""),
     [pantryText, setPantryText] = useState("");
@@ -165,17 +166,30 @@ export default function Dashboard() {
     busy === "Finding your dinners" || runningAgent?.kind === "planning";
   const placingOrder = !!pendingOrder || runningAgent?.kind === "execution";
   useEffect(() => {
-    if (runningAgent?.kind === "planning")
+    if (runningAgent?.kind === "planning") {
       observedPlanning.current = runningAgent.id;
+      setSearchError("");
+    }
     const finished = data?.agentRuns?.find(
       (r) =>
         r.id === observedPlanning.current && r.status === "awaiting_approval",
     );
+    const failed = data?.agentRuns?.find(r => r.id === observedPlanning.current && r.status === "failed");
+    if (failed) {
+      setNotice("");
+      setSearchError(failed.error || "Couldn't find new dinners. Please try again.");
+      observedPlanning.current = undefined;
+    }
     if (finished) {
       setNotice("Dinner is served (almost)! Your week is ready to review.");
       observedPlanning.current = undefined;
     }
   }, [data, runningAgent]);
+  useEffect(() => {
+    if (!searchError) return;
+    const timer = setTimeout(() => setSearchError(""), 8000);
+    return () => clearTimeout(timer);
+  }, [searchError]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(""), 6500);
@@ -556,21 +570,6 @@ export default function Dashboard() {
               Edit preferences
             </button>
           </div>
-          {data.agentRuns?.[0]?.kind === "planning" &&
-            data.agentRuns[0].status === "failed" &&
-            plan && (
-              <div className="alert error" role="alert">
-                The latest dinner search didn’t finish. The meals below are your
-                previously saved plan. Your cuisine choices are still selected;
-                try finding dinners again.
-                {data.agentRuns[0].error && (
-                  <details>
-                    <summary>Why this plan wasn’t saved</summary>
-                    <p>{data.agentRuns[0].error}</p>
-                  </details>
-                )}
-              </div>
-            )}
           {error && (
             <div className="alert error" role="alert">
               {error}
@@ -1267,6 +1266,12 @@ export default function Dashboard() {
           </footer>
         </div>
       </main>
+      {searchError && !findingDinners && !placingOrder && !orderComplete && (
+        <div className="kitchen-toast search-error-toast" role="alert">
+          <span>{searchError}</span>
+          <button className="text-button" aria-label="Dismiss search error" onClick={() => setSearchError("")}><X size={18}/></button>
+        </div>
+      )}
       {notice && !findingDinners && !placingOrder && !orderComplete && (
         <div className="kitchen-toast" role="status">
           <CheckCircle2 size={22} aria-hidden="true" />
