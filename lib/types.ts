@@ -52,6 +52,9 @@ export type Batch = {
   reason?: string;
 };
 export type Plan = {
+  aiRunId?: string;
+  aiSummary?: string;
+  aiExecutionRevision?: number;
   autoOrder?: boolean;
   agentPaidRevision?: number;
   agentError?: string;

@@ -1,3 +1,4 @@
+import { cacheKey, cached, cachePut } from "./agent-store";
 import { z } from "zod";
 import type { Plan } from "./types";
 export type LivePrices = {
@@ -8,6 +9,13 @@ export type LivePrices = {
   fetchedAt: string;
   items: {
     ingredient: string;
+    alternatives?: {
+      productId: string;
+      description: string;
+      size?: string;
+      regularCents: number;
+      promoCents?: number;
+    }[];
     productId?: string;
     description?: string;
     size?: string;
@@ -172,6 +180,21 @@ export function parseProduct(data: unknown, search?: string) {
       : undefined,
   };
 }
+function productAlternatives(
+  candidates: z.infer<typeof item>[],
+  ingredient: string,
+) {
+  return [
+    ...new Map(
+      matchingProducts({ data: candidates }, ingredient).flatMap((p) => {
+        const parsed = parseProduct({ data: [p] }, ingredient);
+        return parsed ? [[parsed.productId, parsed] as const] : [];
+      }),
+    ).values(),
+  ]
+    .sort((a, b) => a.regularCents - b.regularCents)
+    .slice(0, 4);
+}
 type GetProducts = (
   path: string,
   params: Record<string, string>,
@@ -199,7 +222,12 @@ export async function retrieveIngredient(
       );
     candidates.push(...result.data);
     let match = parseProduct({ data: candidates }, ingredient);
-    if (match) return { ingredient, ...match };
+    if (match)
+      return {
+        ingredient,
+        ...match,
+        alternatives: productAlternatives(candidates, ingredient),
+      };
     if ((result.meta?.pagination.total || 0) > 50) {
       const page = z.object({ data: z.array(item).default([]) }).parse(
         await get("products", {
@@ -211,7 +239,12 @@ export async function retrieveIngredient(
       );
       candidates.push(...page.data);
       match = parseProduct({ data: candidates }, ingredient);
-      if (match) return { ingredient, ...match };
+      if (match)
+        return {
+          ingredient,
+          ...match,
+          alternatives: productAlternatives(candidates, ingredient),
+        };
     }
   }
   const matching = matchingProducts(
@@ -226,7 +259,7 @@ export async function retrieveIngredient(
       }),
     );
     const match = parseProduct({ data: [detail.data] }, ingredient);
-    if (match) return { ingredient, ...match };
+    if (match) return { ingredient, ...match, alternatives: [match] };
   }
   return {
     ingredient,
@@ -246,7 +279,7 @@ export function krogerBaseUrl() {
     ? "https://api-ce.kroger.com/v1"
     : "https://api.kroger.com/v1";
 }
-export async function livePrices(
+async function fetchLivePrices(
   plan: Plan,
   ingredientNames?: string[],
 ): Promise<LivePrices> {
@@ -346,4 +379,26 @@ export async function livePrices(
     fetchedAt: new Date().toISOString(),
     items: results,
   };
+}
+
+export async function livePrices(
+  plan: Plan,
+  ingredientNames?: string[],
+): Promise<LivePrices> {
+  const names = ingredientNames ?? [
+    ...new Set(plan.batches.flatMap((b) => b.groceries.map((g) => g.name))),
+  ];
+  const key =
+    "kroger-v2:" +
+    cacheKey({
+      environment: krogerEnvironment(),
+      zip: plan.preferences.zip,
+      names: [...names].sort(),
+    });
+  const hit = await cached<LivePrices>(key);
+  if (hit) return hit;
+  const result = await fetchLivePrices(plan, names);
+  if (!result.items.some((i) => i.error?.includes("timed out")))
+    await cachePut(key, result, 15 * 60000);
+  return result;
 }

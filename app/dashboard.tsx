@@ -34,6 +34,13 @@ import {
 } from "@/lib/domain";
 import type { State, Recipe, Preferences, Plan } from "@/lib/types";
 type Data = State & {
+  agentRuns?: import("@/lib/agent-types").AgentRunSummary[];
+  aiUsage?: {
+    calls: number;
+    estimatedUsd: number;
+    dailyCallLimit: number;
+    lifetimeCallLimit: number;
+  };
   recipes: Recipe[];
   integrations: {
     stripe: boolean;
@@ -134,6 +141,12 @@ export default function Dashboard() {
       history.replaceState({}, "", "/");
     }
   }, [refresh, act]);
+  const runningAgent = data?.agentRuns?.find((r) => r.status === "running");
+  useEffect(() => {
+    if (!runningAgent || settings) return;
+    const timer = setInterval(() => refresh().catch(() => {}), 4000);
+    return () => clearInterval(timer);
+  }, [runningAgent?.id, settings, refresh]);
   useEffect(() => {
     if (!settings && detail === undefined && swap === undefined) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -302,6 +315,65 @@ export default function Dashboard() {
           </button>
         </header>
         <div className="content">
+          {data?.agentRuns?.[0] && (
+            <section className="panel" aria-live="polite">
+              <h2>
+                {runningAgent
+                  ? "Your AI agent is working"
+                  : "AI agent activity"}
+              </h2>
+              <p>
+                {data.agentRuns[0].kind === "planning"
+                  ? "Weekly planning authorized · final order approval still required"
+                  : "Order approved · executing test payment and simulated fulfillment"}
+              </p>
+              <p>
+                {data.agentRuns[0].summary ||
+                  data.agentRuns[0].status.replaceAll("_", " ")}
+              </p>
+              {data.agentRuns[0].error && (
+                <p className="error">{data.agentRuns[0].error}</p>
+              )}
+              <details open={!!runningAgent}>
+                <summary>
+                  Tools and results · {data.agentRuns[0].calls} steps ·{" "}
+                  {data.agentRuns[0].cacheHits} cache hits
+                </summary>
+                <ol>
+                  {data.agentRuns[0].trace.map((step, i) => (
+                    <li key={i}>
+                      <strong>{step.tool.replaceAll("_", " ")}</strong>:{" "}
+                      {step.summary}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+              {data.aiUsage && (
+                <small>
+                  AI usage: approximately $
+                  {data.aiUsage.estimatedUsd.toFixed(4)} across{" "}
+                  {data.aiUsage.calls} API calls. Limit: 20 calls/day, 200
+                  total. Page refreshes use no AI calls.
+                </small>
+              )}
+              {runningAgent && (
+                <button
+                  className="text-button"
+                  disabled={!!busy}
+                  onClick={() =>
+                    act(
+                      "agent/continue",
+                      { runId: runningAgent.id },
+                      "Resuming agent",
+                    )
+                  }
+                >
+                  Resume if interrupted
+                </button>
+              )}
+            </section>
+          )}
+
           <div className="page-heading">
             <div>
               <p className="eyebrow">
@@ -577,24 +649,54 @@ export default function Dashboard() {
                             disabled={
                               !!busy ||
                               plan.status === "infeasible" ||
-                              (plan.pricingSource === "kroger" && !plan.simulationQuote)
+                              (plan.pricingSource === "kroger" &&
+                                !plan.simulationQuote)
                             }
                             onClick={() => planAction("plans/approve")}
                           >
                             <Check size={17} />
-                            {(plan.pricingSource === "kroger" && !plan.simulationQuote)
+                            {plan.pricingSource === "kroger" &&
+                            !plan.simulationQuote
                               ? "Awaiting final quote"
-                              : "Approve & let agent order"}
+                              : "Approve order & let agent execute"}
                           </button>
                         )}
                         {plan?.retailBasket && !plan.simulationQuote && (
-                          <button className="secondary" disabled={!!busy} onClick={() => planAction("sandbox/quote")}>
+                          <button
+                            className="secondary"
+                            disabled={!!busy}
+                            onClick={() => planAction("sandbox/quote")}
+                          >
                             Prepare test checkout
                           </button>
                         )}
-                        {plan?.simulationQuote && <p>SIMULATION: {money(plan.simulationQuote.mockItemsCents)} mock ingredients + {money(plan.simulationQuote.feeCents)} delivery + {money(plan.simulationQuote.taxCents)} tax. No real purchase.</p>}
-                        {plan?.status === "approved" && !plan.autoOrder && <button className="secondary" disabled={!!busy} onClick={() => planAction("plans/automate")}>Let agent handle checkout & orders</button>}
-                        {plan?.autoOrder && <p>{plan.agentError || (plan.agentPaidRevision === plan.revision ? "Agent: payment confirmed. Orders scheduled automatically." : "Agent: confirming test payment. Unpaid orders stay on hold.")}</p>}
+                        {plan?.simulationQuote && (
+                          <p>
+                            SIMULATION:{" "}
+                            {money(plan.simulationQuote.mockItemsCents)} mock
+                            ingredients + {money(plan.simulationQuote.feeCents)}{" "}
+                            delivery + {money(plan.simulationQuote.taxCents)}{" "}
+                            tax. No real purchase.
+                          </p>
+                        )}
+                        {plan?.status === "approved" && !plan.autoOrder && (
+                          <button
+                            className="secondary"
+                            disabled={!!busy}
+                            onClick={() => planAction("plans/automate")}
+                          >
+                            Let agent handle checkout & orders
+                          </button>
+                        )}
+                        {plan?.autoOrder && (
+                          <p>
+                            {plan.agentError ||
+                              (plan.agentPaidRevision === plan.revision
+                                ? "Agent: payment confirmed. Orders scheduled automatically."
+                                : "Agent: confirming test payment. Unpaid orders stay on hold.")}
+                          </p>
+                        )}
+                        {plan?.aiSummary && <p>{plan.aiSummary}</p>}
                         <small>
                           {plan?.issue ?? "You’re always in control."}
                         </small>
@@ -677,7 +779,12 @@ export default function Dashboard() {
                         {plan.simulationQuote
                           ? " Test checkout uses mock amounts for unpriced items and checkout charges. These are not Kroger quotes."
                           : " Final delivery fees, tax, tips, and availability are not quoted; real purchases are on hold."}
-                        {plan.simulationQuote?.missingItems.map(item => <p key={item.name}>{item.name}: {money(item.amountCents)} mock package price (test only)</p>)}
+                        {plan.simulationQuote?.missingItems.map((item) => (
+                          <p key={item.name}>
+                            {item.name}: {money(item.amountCents)} mock package
+                            price (test only)
+                          </p>
+                        ))}
                       </div>
                       {plan.retailBasket.batches.map((batch, i) => (
                         <section className="panel" key={batch.batchId}>
@@ -715,7 +822,9 @@ export default function Dashboard() {
                                       {line.productId && (
                                         <small>Product {line.productId}</small>
                                       )}
-                                      {line.quantityNote && <small>{line.quantityNote}</small>}
+                                      {line.quantityNote && (
+                                        <small>{line.quantityNote}</small>
+                                      )}
                                       {line.issue && (
                                         <small className="error">
                                           {line.issue}
@@ -724,7 +833,9 @@ export default function Dashboard() {
                                     </td>
                                     <td>
                                       {line.packages !== undefined
-                                        ? line.packages === 0 ? "Already bought this week" : `${line.packages} × ${line.size || "whole package"}`
+                                        ? line.packages === 0
+                                          ? "Already bought this week"
+                                          : `${line.packages} × ${line.size || "whole package"}`
                                         : line.size
                                           ? `${line.size} · quantity needs review`
                                           : "Needs review"}
@@ -817,12 +928,16 @@ export default function Dashboard() {
                           </div>
                           <div className="schedule-row">
                             <span>
-                              {(plan.pricingSource === "kroger" && !plan.simulationQuote)
+                              {plan.pricingSource === "kroger" &&
+                              !plan.simulationQuote
                                 ? "Final total"
-                                : plan.simulationQuote ? "Simulation total" : "Historical sandbox total"}
+                                : plan.simulationQuote
+                                  ? "Simulation total"
+                                  : "Historical sandbox total"}
                             </span>
                             <b>
-                              {(plan.pricingSource === "kroger" && !plan.simulationQuote)
+                              {plan.pricingSource === "kroger" &&
+                              !plan.simulationQuote
                                 ? "Awaiting quote"
                                 : money(b.totalCents)}
                             </b>
@@ -849,13 +964,21 @@ export default function Dashboard() {
                       ))}
                     </div>
                   )}
-                  {plan?.autoOrder && <div className="alert neutral">Automatic checkout is enabled. No card entry or manual order step is required. The agent uses a Stripe test payment method and submits simulated orders at the scheduled times.</div>}
+                  {plan?.autoOrder && (
+                    <div className="alert neutral">
+                      Automatic checkout is enabled. No card entry or manual
+                      order step is required. The agent uses a Stripe test
+                      payment method and submits simulated orders at the
+                      scheduled times.
+                    </div>
+                  )}
                   <section className="panel payment-panel">
                     <div>
                       <span className="eyebrow">STRIPE TEST MODE</span>
                       <h2>A checkout without the charge.</h2>
                       <p>
-                        {(plan?.pricingSource === "kroger" && !plan.simulationQuote)
+                        {plan?.pricingSource === "kroger" &&
+                        !plan.simulationQuote
                           ? "Checkout is on hold until every ingredient and the final all-in total are confirmed."
                           : `Test the approved ${money(total)} weekly total in Stripe Checkout.`}
                         <br />
@@ -876,7 +999,11 @@ export default function Dashboard() {
                           plan.autoOrder === true ||
                           plan.status !== "approved" ||
                           !data?.integrations.stripe ||
-                          payments.some((p) => p.status === "paid" && p.revision === plan?.revision)
+                          payments.some(
+                            (p) =>
+                              p.status === "paid" &&
+                              p.revision === plan?.revision,
+                          )
                         }
                         onClick={() =>
                           plan &&
@@ -888,9 +1015,15 @@ export default function Dashboard() {
                         }
                       >
                         <CreditCard size={16} />
-                        {payments.some((p) => p.status === "paid" && p.revision === plan?.revision)
+                        {payments.some(
+                          (p) =>
+                            p.status === "paid" &&
+                            p.revision === plan?.revision,
+                        )
                           ? "Test payment confirmed"
-                          : plan?.autoOrder ? "Agent handles checkout" : "Try Stripe checkout"}
+                          : plan?.autoOrder
+                            ? "Agent handles checkout"
+                            : "Try Stripe checkout"}
                         <ArrowUpRight size={15} />
                       </button>
                       <small>
@@ -981,7 +1114,7 @@ export default function Dashboard() {
                       [
                         "Recipe discovery",
                         data?.integrations.ai
-                          ? "OpenAI browsing connected"
+                          ? "AI tool-calling agent connected"
                           : "Published recipe library · no API key needed",
                       ],
                       [
@@ -1338,24 +1471,16 @@ export default function Dashboard() {
                   />
                   <small>
                     {data?.integrations.ai
-                      ? "OpenAI will browse for recipes matching this feedback."
+                      ? "The agent will use this feedback when researching and pricing your dinners."
                       : "Requires an OpenAI API key. Cuisine selection and swaps work without one."}
                   </small>
                 </label>
               </details>
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={preferences.recurring}
-                  onChange={(e) =>
-                    setPreferences({
-                      ...preferences,
-                      recurring: e.target.checked,
-                    })
-                  }
-                />
-                Draft next week every Friday. I’ll approve before ordering.
-              </label>
+              <p className="muted">
+                Approve this week to authorize AI research and basket planning.
+                You’ll review the meals and total before a separate order
+                approval. No automatic weekly planning.
+              </p>
               {error && (
                 <p className="error" role="alert">
                   {error}
@@ -1365,6 +1490,7 @@ export default function Dashboard() {
                 className="primary full"
                 disabled={
                   !!busy ||
+                  !!runningAgent ||
                   !preferences.cuisines.length ||
                   !preferences.days.length
                 }
@@ -1375,7 +1501,11 @@ export default function Dashboard() {
                 ) : (
                   <Sparkles size={17} />
                 )}{" "}
-                {busy ? "Finding your dinners…" : "Build my dinner plan"}
+                {busy
+                  ? "Starting your agent…"
+                  : data?.integrations.ai
+                    ? "Approve week & start agent"
+                    : "Build my dinner plan"}
                 <ArrowRight size={17} />
               </button>
               <p className="form-footnote">
@@ -1548,7 +1678,9 @@ function Budget({
       <p className={displayedTotal > budget ? "error" : "budget-room"}>
         {displayedTotal > budget
           ? "Priced items already exceed your cap. Purchases are blocked."
-          : simulation ? "Simulation total only. No real purchase." : "Priced groceries only—not the final weekly total."}
+          : simulation
+            ? "Simulation total only. No real purchase."
+            : "Priced groceries only—not the final weekly total."}
       </p>
       <div className="budget-breakdown">
         <div>
@@ -1556,17 +1688,33 @@ function Budget({
           <span>{basket ? money(subtotal) : "Pending"}</span>
         </div>
         <div>
-          <span>{simulation ? "Mock missing items ($5 each)" : "Items needing review"}</span>
-          <span>{simulation ? money(simulation.mockItemsCents) : basket?.unresolved ?? "Pending"}</span>
+          <span>
+            {simulation
+              ? "Mock missing items ($5 each)"
+              : "Items needing review"}
+          </span>
+          <span>
+            {simulation
+              ? money(simulation.mockItemsCents)
+              : (basket?.unresolved ?? "Pending")}
+          </span>
         </div>
         <div>
           <span>Delivery, tax & tips</span>
-          <span>{simulation ? money(simulation.feeCents + simulation.taxCents) + " (mock)" : "Awaiting quote"}</span>
+          <span>
+            {simulation
+              ? money(simulation.feeCents + simulation.taxCents) + " (mock)"
+              : "Awaiting quote"}
+          </span>
         </div>
       </div>
       <div className="budget-total">
         <span>Final weekly total</span>
-        <b>{simulation ? money(simulation.totalCents) + " (test)" : "Not confirmed"}</b>
+        <b>
+          {simulation
+            ? money(simulation.totalCents) + " (test)"
+            : "Not confirmed"}
+        </b>
       </div>
       <small className="budget-commit">
         {basket?.environment === "certification"

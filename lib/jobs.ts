@@ -1,9 +1,8 @@
+import { allRuns } from "./agent-runs";
+import { driveAgent } from "./ai-agent";
 import { runOrderAgent } from "./order-agent";
-import { pricePlan } from "./kroger-basket";
 import { mutate, readState } from "./db";
-import { discover } from "./recipes";
-import { nextMonday, makePlan, processDue, log } from "./domain";
-import { formatInTimeZone } from "date-fns-tz";
+import { processDue, log } from "./domain";
 export async function runJobs() {
   const now = new Date();
   const acquired = await mutate((s) => {
@@ -14,7 +13,10 @@ export async function runJobs() {
   if (!acquired) return { skipped: true };
   try {
     const pending = await readState();
-    for (const plan of pending.plans.filter(p => p.autoOrder && p.status === "approved")) await runOrderAgent(plan.id, undefined, now);
+    for (const plan of pending.plans.filter(
+      (p) => p.autoOrder && p.status === "approved",
+    ))
+      await runOrderAgent(plan.id, undefined, now);
     await mutate((s) => {
       let count = 0;
       for (const p of s.plans) count += processDue(p, now);
@@ -22,29 +24,11 @@ export async function runJobs() {
       if (count)
         log(s, `Scheduled runner submitted ${count} sandbox order(s).`);
     });
-    const s = await readState(),
-      p = s.preferences;
-    const localDay = Number(formatInTimeZone(now, p.timezone, "i")),
-      hour = Number(formatInTimeZone(now, p.timezone, "H"));
-    const week = nextMonday(now, p.timezone);
-    if (
-      p.recurring &&
-      ((localDay === 5 && hour >= 9) || localDay === 6 || localDay === 7) &&
-      !s.plans.some((x) => x.week === week) &&
-      s.lastGeneratedWeek !== week
-    ) {
-      const result = await discover(p, "");
-      const plan = makePlan(result.recipes, p, week, "", result.mode, true);
-      await pricePlan(plan);
-      await mutate((s) => {
-        if (!s.plans.some((x) => x.week === week)) {
-          s.plans.unshift(plan);
-          s.activePlanId = plan.id;
-          s.lastGeneratedWeek = week;
-          log(s, "Next week’s draft is ready for approval.");
-        }
-      });
-    }
+    // Weekly planning always requires an explicit human authorization.
+    for (const run of (await allRuns())
+      .filter((r) => r.status === "running")
+      .slice(0, 1))
+      await driveAgent(run.id);
     return { ok: true };
   } catch (e) {
     await mutate((s) =>

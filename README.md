@@ -66,7 +66,7 @@ This repository includes an hourly GitHub Actions scheduler. Set repository Acti
 
 Alternatively, if your Vercel plan supports hourly cron, replace `vercel.json` with `vercel.cron.example.json` and redeploy. The default config deliberately does not require a paid cron tier. Any external scheduler that securely supplies the Authorization header also works. A configured secret alone does not mean scheduling is active; **Activity/Deliveries shows the last successful runner check-in**.
 
-The runner drafts the next Monday–Sunday plan Friday after 9 a.m. in the household’s IANA timezone, with weekend catch-up. It never approves the draft. Legacy sandbox approved batches submit 24 hours before the target delivery time; Kroger-priced plans cannot submit without a final quote; arrival targets are one hour before cooking. Batches cover at most three days. Missed delivery windows are held for review. Repeated jobs do not create duplicate sandbox orders.
+The runner never starts weekly planning; initial weekly approval is required. It resumes explicitly authorized in-progress agent runs. Legacy sandbox approved batches submit 24 hours before the target delivery time; Kroger-priced plans cannot submit without a final quote; arrival targets are one hour before cooking. Batches cover at most three days. Missed delivery windows are held for review. Repeated jobs do not create duplicate sandbox orders.
 
 ### Other deployment options
 
@@ -78,7 +78,7 @@ The checked-in recipe snapshots were extracted from actual Budget Bytes Recipe J
 
 Without an AI key, generation refreshes matching published recipes directly, falling back to their dated snapshots if the source is temporarily unavailable. Ingredient lists without explicit quantities are rejected rather than guessed; this can mean a particular cuisine/diet has no eligible recipe. `npm run recipes:refresh` updates snapshots.
 
-For broader browsing and free-text feedback, set `OPENAI_API_KEY` and optionally `OPENAI_MODEL`. The Responses API searches supported recipe publishers, then the app fetches the source Recipe JSON-LD itself. Recipe content cannot authorize purchases. API search usage may cost money; it is separate from the grocery budget. No Edamam account is used.
+Set `OPENAI_API_KEY` for the bounded tool-calling agent described below. It searches the published-source index and fetches source Recipe JSON-LD, with cached results and free-text preferences. Recipe content cannot authorize purchases. AI API usage is separate from the grocery budget. No Edamam account or paid search tool is used.
 
 ## Real store price lookup
 
@@ -126,8 +126,27 @@ See `.env.example`. Secrets remain server-only. `NEXT_PUBLIC_` secrets are never
 
 Use **Prepare test checkout** to create an explicit simulation quote. Real Kroger product prices remain unchanged in the shopping list. The simulation adds a $5 fixture per unique unpriced ingredient, $5.99 per nonempty delivery, 8% mock tax on groceries, and no tip. These are demo amounts, not Kroger quotes. The complete test total must fit the plan budget before approval or Stripe test checkout. Refreshing prices or swapping a meal invalidates the simulation and approval.
 
-Approve the plan, then use Stripe test checkout or simulate orders now. Scheduled jobs also process approved simulations at their scheduled times. Order IDs prefixed `sandbox_` are internal records, not Kroger orders; payment and order simulation are independent demo steps. Live Stripe keys are rejected. No Kroger cart, order, delivery booking, or payment API mutation is called.
+For AI-created plans, approve the proposed order to let the model invoke test payment and scheduled fulfillment. Legacy plans retain manual demo controls. Order IDs prefixed `sandbox_` are internal records, not Kroger orders. Live Stripe keys are rejected. No Kroger cart, order, delivery booking, or payment API mutation is called.
 
 ## Automatic ordering agent
 
 New priced plans include a simulation quote automatically. **Approve & let agent order** is the only required action: the server verifies approval and budget, creates and confirms a Stripe test PaymentIntent with `pm_card_visa`, then submits simulated orders when their scheduled times arrive. No card entry or hosted checkout is needed. The hourly GitHub runner retries pending payments and advances scheduled orders; approval also runs the agent immediately. Payment attempts have durable IDs and stable Stripe idempotency keys. Unpaid, paused, stale, or over-budget plans cannot submit orders. Ambiguous attempts older than 23 hours require review to avoid creating a second charge after idempotency expiration. Existing paid manual checkouts are reused. Grocery submissions remain internal `sandbox_` records, not Kroger orders.
+
+## Model-driven agent and approval gates
+
+With `OPENAI_API_KEY`, **Approve week & start agent** starts a durable Responses API tool loop using `gpt-4.1-mini`. The model selects published recipe sources, retrieves ingredients, searches Kroger products, builds a basket, inspects alternatives, revises if needed, and calls `save_proposal`. Recipe discovery searches a curated source index; `fetch_recipe` can retrieve additional URLs on the supported publisher allowlist. This is not unrestricted web search. Retrieved pages and products are untrusted data, not instructions. Server-side schemas enforce permitted recipes, products, dinner days, diet, and budget.
+
+A separate **Approve order & let agent execute** resumes a model-driven execution loop. Its tools are bound to the approved plan ID and revision, with no model-supplied amount or arbitrary payment destination. The model inspects the order, invokes the idempotent test payment/scheduling executor, checks the result, and finishes. The existing hourly runner follows that authorized schedule without asking the model on every tick. Pause/revision/budget/payment guards remain enforced by code. Fulfillment is simulated; no real Kroger cart or order is created.
+
+No cron job starts weekly planning. Only explicit weekly approval starts a planning run. Opening or refreshing the dashboard never invokes the model. Existing published plans remain available if the key is not configured. No hidden expensive recipe-discovery model path remains.
+
+### Spend controls and persistence
+
+- Fixed small model; 1,800 output tokens and 45 KB serialized request maximum per call; no paid hosted search tools.
+- Maximum 8 model turns per planning run, 4 per execution run. Failed/uncertain calls count against the limits.
+- Transactional 20-call daily limit and 200-call lifetime limit for this app. At current model rates and conservative byte-to-token bounds, these reserve at most approximately $0.50/day and $5 total. This is an app guard, not an OpenAI account-wide spending limit. Usage estimates exclude other applications and external calls.
+- Recipe cache: 7 days; Kroger query cache: 15 minutes, keyed by environment, ZIP, and ingredient names; identical planning-model responses: 24 hours. Execution responses are never cached across runs.
+- Turso tables persist agent runs, tool results, leases, cache entries, and token usage across deployments. No API keys, payment authority, or approval state is stored in localStorage. Concurrent runs use leases and unique indexes; model calls reserve budget before network requests.
+- If interrupted, a run can resume from persisted tool results using **Resume if interrupted** or the scheduled runner. Failed runs stop visibly rather than silently burning credits. Network interruption after a model response but before persistence may require another counted model call; payment/order tools remain idempotent.
+
+Reference: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [model pricing](https://developers.openai.com/api/docs/models/gpt-4.1-mini).

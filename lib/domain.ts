@@ -436,6 +436,7 @@ export function processDue(p: Plan, now = new Date(), force = false) {
   if (p.pricingSource === "kroger" && !validSimulation(p)) return 0;
   if (p.status !== "approved" || p.approvedRevision !== p.revision) return 0;
   if (p.autoOrder && p.agentPaidRevision !== p.revision) return 0;
+  if (p.aiRunId && p.aiExecutionRevision !== p.revision) return 0;
   let count = 0;
   let committed = p.batches
     .filter((b) => ["submitted", "delivered"].includes(b.status))

@@ -10,7 +10,7 @@ concurrency:
 jobs:
   process:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 6
     steps:
       - name: Process due plans and sandbox orders
         env:
@@ -18,6 +18,6 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           test -n "$APP_URL" && test -n "$CRON_SECRET"
-          curl --fail --silent --show-error --max-time 120 \
+          curl --fail --silent --show-error --max-time 280 \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$APP_URL/api/jobs"

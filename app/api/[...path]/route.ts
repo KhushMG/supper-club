@@ -1,7 +1,10 @@
+import { startPlanning, startExecution, driveAgent } from "@/lib/ai-agent";
+import { listRuns, getRun } from "@/lib/agent-runs";
+import { usageSummary } from "@/lib/agent-store";
 import { runOrderAgent } from "@/lib/order-agent";
 import { prepareSimulation } from "@/lib/simulation";
 import { pricePlan } from "@/lib/kroger-basket";
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { readState, mutate } from "@/lib/db";
 import {
@@ -33,7 +36,7 @@ import { krogerEnvironment } from "@/lib/grocery-prices";
 import { runJobs } from "@/lib/jobs";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 300;
 const json = (body: unknown, status = 200) =>
   NextResponse.json(body, {
     status,
@@ -112,6 +115,8 @@ async function handle(req: Request) {
       return json({
         ...s,
         recipes,
+        agentRuns: await listRuns(),
+        aiUsage: await usageSummary(),
         integrations: {
           stripe:
             process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") ?? false,
@@ -129,6 +134,14 @@ async function handle(req: Request) {
     }
     if (req.method !== "POST") return json({ error: "Not found" }, 404);
     const body = await req.json();
+    if (path === "agent/continue") {
+      const { runId } = z.object({ runId: id }).parse(body);
+      const run = await getRun(runId);
+      if (!run || run.status !== "running")
+        throw new Error("No pending agent run.");
+      after(() => driveAgent(runId));
+      return json({ ok: true });
+    }
     if (path === "logout") {
       const r = json({ ok: true });
       r.cookies.delete("supper_session");
@@ -152,6 +165,11 @@ async function handle(req: Request) {
           feedback: z.string().max(1000).default(""),
         })
         .parse(body);
+      if (process.env.OPENAI_API_KEY) {
+        const run = await startPlanning(preferences, feedback);
+        after(() => driveAgent(run.id));
+        return json({ runId: run.id });
+      }
       const state = await readState();
       const week = nextMonday(new Date(), preferences.timezone);
       const existing = state.plans.find((p) => p.week === week);
@@ -273,9 +291,13 @@ async function handle(req: Request) {
         if (!p || p.revision !== args.revision)
           throw new Error("Plan changed. Refresh first.");
         if (path === "plans/automate") {
-          if (p.status !== "approved" || p.approvedRevision !== p.revision) throw new Error("Approve the plan first.");
+          if (p.status !== "approved" || p.approvedRevision !== p.revision)
+            throw new Error("Approve the plan first.");
           p.autoOrder = true;
-          log(s, "Automatic test payment and scheduled simulated ordering enabled.");
+          log(
+            s,
+            "Automatic test payment and scheduled simulated ordering enabled.",
+          );
         } else if (path === "plans/approve") {
           approve(p);
           p.autoOrder = true;
@@ -299,7 +321,15 @@ async function handle(req: Request) {
           );
         }
       });
-      if (path === "plans/approve" || path === "plans/automate") await runOrderAgent(args.planId);
+      if (path === "plans/approve" || path === "plans/automate") {
+        const approved = (await readState()).plans.find(
+          (p) => p.id === args.planId,
+        )!;
+        if (approved.aiRunId && process.env.OPENAI_API_KEY) {
+          const run = await startExecution(approved);
+          after(() => driveAgent(run.id));
+        } else await runOrderAgent(args.planId);
+      }
       return json({ ok: true });
     }
     if (path === "sandbox/cancel") {
@@ -317,17 +347,34 @@ async function handle(req: Request) {
       return json({ ok: true });
     }
     if (path === "sandbox/quote") {
-      const args = z.object({ planId: id, revision: z.number().int(), budgetCents: z.number().int().min(100).max(200000).optional() }).parse(body);
-      await mutate(s => {
-        const p = s.plans.find(p => p.id === args.planId);
-        if (!p || p.revision !== args.revision) throw new Error("Plan changed. Refresh first.");
-        if (s.payments.some(payment => payment.planId === p.id && ["open", "creating"].includes(payment.status)))
+      const args = z
+        .object({
+          planId: id,
+          revision: z.number().int(),
+          budgetCents: z.number().int().min(100).max(200000).optional(),
+        })
+        .parse(body);
+      await mutate((s) => {
+        const p = s.plans.find((p) => p.id === args.planId);
+        if (!p || p.revision !== args.revision)
+          throw new Error("Plan changed. Refresh first.");
+        if (
+          s.payments.some(
+            (payment) =>
+              payment.planId === p.id &&
+              ["open", "creating"].includes(payment.status),
+          )
+        )
           throw new Error("Resolve the open test checkout first.");
-        if (args.budgetCents !== undefined) p.preferences.budgetCents = args.budgetCents;
+        if (args.budgetCents !== undefined)
+          p.preferences.budgetCents = args.budgetCents;
         prepareSimulation(p);
-        log(s, "Prepared simulation quote: mock $5 per unpriced ingredient, $5.99 per delivery, 8% mock tax, no tip. No real purchase.");
+        log(
+          s,
+          "Prepared simulation quote: mock $5 per unpriced ingredient, $5.99 per delivery, 8% mock tax, no tip. No real purchase.",
+        );
       });
-      return json({ok: true});
+      return json({ ok: true });
     }
     if (path === "groceries/prices") {
       const planId = id.parse(body.planId);

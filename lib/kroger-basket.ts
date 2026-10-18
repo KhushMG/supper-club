@@ -145,7 +145,8 @@ export function matchRetailLine(
       ...result,
       packages: 1,
       totalCents: product.regularCents,
-      quantityNote: "One whole package assumed for the week; recipe units differ from the package.",
+      quantityNote:
+        "One whole package assumed for the week; recipe units differ from the package.",
     };
   const packages = Math.ceil(line.required / pack.quantity - 1e-9);
   return { ...result, packages, totalCents: packages * product.regularCents };
@@ -168,7 +169,8 @@ export function priceRetailBatches(
         if (assumed.has(key)) {
           result.packages = 0;
           result.totalCents = 0;
-          result.quantityNote = "Use the whole package bought earlier this week (quantity assumed).";
+          result.quantityNote =
+            "Use the whole package bought earlier this week (quantity assumed).";
         }
         assumed.add(key);
       } else {
@@ -177,21 +179,34 @@ export function priceRetailBatches(
         const needed = Math.max(0, line.required - stock);
         result.packages = Math.max(0, Math.ceil(needed / pack.quantity - 1e-9));
         result.totalCents = result.packages * result.unitPriceCents!;
-        remaining.set(stockKey, Math.max(0, stock + result.packages * pack.quantity - line.required));
-        if (stock > 0) result.quantityNote = "Includes leftovers from packages bought earlier this week.";
+        remaining.set(
+          stockKey,
+          Math.max(0, stock + result.packages * pack.quantity - line.required),
+        );
+        if (stock > 0)
+          result.quantityNote =
+            "Includes leftovers from packages bought earlier this week.";
         assumed.add(key);
       }
       return result;
     });
-    batch.subtotalCents = batch.lines.reduce((sum, line) => sum + (line.totalCents ?? 0), 0);
+    batch.subtotalCents = batch.lines.reduce(
+      (sum, line) => sum + (line.totalCents ?? 0),
+      0,
+    );
   }
   return batches;
 }
-export async function buildRetailBasket(plan: Plan): Promise<RetailBasket> {
+export async function buildRetailBasket(
+  plan: Plan,
+  supplied?: LivePrices,
+): Promise<RetailBasket> {
   const batches = retailRequirements(plan);
-  const prices = await livePrices(plan, [
-    ...new Set(batches.flatMap((b) => b.lines.map((l) => l.name))),
-  ]);
+  const prices =
+    supplied ??
+    (await livePrices(plan, [
+      ...new Set(batches.flatMap((b) => b.lines.map((l) => l.name))),
+    ]));
   priceRetailBatches(batches, prices.items);
   return {
     environment: prices.environment || "production",
@@ -206,10 +221,10 @@ export async function buildRetailBasket(plan: Plan): Promise<RetailBasket> {
     finalTotalCents: null,
   };
 }
-export async function pricePlan(plan: Plan) {
+export async function pricePlan(plan: Plan, supplied?: LivePrices) {
   delete plan.simulationQuote;
   try {
-    plan.retailBasket = await buildRetailBasket(plan);
+    plan.retailBasket = await buildRetailBasket(plan, supplied);
     delete plan.pricingError;
   } catch {
     delete plan.retailBasket;
@@ -256,4 +271,3 @@ export async function pricePlan(plan: Plan) {
     if (plan.retailBasket) prepareSimulation(plan, false);
   }
 }
-
