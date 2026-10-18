@@ -568,11 +568,9 @@ export default function Dashboard() {
               }
             >
               <div className="loading-intro" role="status">
-                <p className="eyebrow">
-                  {placingOrder
-                    ? "ONE LESS THING ON YOUR PLATE"
-                    : "A LITTLE SOMETHING GOOD IS COOKING"}
-                </p>
+                {placingOrder && (
+                  <p className="eyebrow">ONE LESS THING ON YOUR PLATE</p>
+                )}
                 <h2>
                   {placingOrder
                     ? "Aprons off. We’ve got this."
