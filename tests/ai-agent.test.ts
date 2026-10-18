@@ -176,14 +176,14 @@ test("execution agent selects payment/order tool, verifies results and finishes 
     globalThis.fetch = original;
   }
 });
-test("server cache expires and spending reservations enforce the daily cap", async () => {
+test("server cache expires and requests can exceed 20 per day while enforcing the lifetime cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);
   assert.deepEqual(await cached("test"), { answer: 42 });
   await cachePut("expired", { answer: 42 }, -1);
   assert.equal(await cached("expired"), undefined);
   const before = await usageSummary();
-  for (let i = before.calls; i < 20; i++) await reserveCall();
+  for (let i = before.calls; i < 200; i++) await reserveCall();
   await assert.rejects(() => reserveCall(), /spending guard/);
-  assert.equal((await usageSummary()).calls, 20);
+  assert.equal((await usageSummary()).calls, 200);
   database().close();
 });

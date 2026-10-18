@@ -111,6 +111,12 @@ test("completion waits for verified execution and opens the ordered week", async
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Approve week & order" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Aprons off. We’ve got this." }),
+  ).toBeVisible();
+  await expect(page.locator(".kitchen-toast")).toContainText(
+    "Your week is approved",
+  );
   verified = true;
   await expect(
     page.getByRole("heading", { name: "Test checkout complete" }),
@@ -123,4 +129,43 @@ test("completion waits for verified execution and opens the ordered week", async
   await expect(
     page.getByRole("heading", { name: "A little planning. Right on time." }),
   ).toBeVisible();
+});
+
+test("planning displays skeleton menus and a toast until the proposal is ready", async ({
+  page,
+  request,
+}) => {
+  const state = await (await request.get("/api/state")).json();
+  const plan = makePlan(recipes, defaults, "2030-04-01");
+  state.plans = [plan];
+  state.activePlanId = plan.id;
+  state.agentRuns = [
+    { id: "planning-loading", kind: "planning", status: "running" },
+  ];
+  let ready = false;
+  await page.route("**/api/state", (route) => {
+    state.agentRuns[0].status = ready ? "awaiting_approval" : "running";
+    return route.fulfill({ json: state });
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Finding your next favorite dinners…" }),
+  ).toBeVisible();
+  await expect(page.locator(".skeleton-card")).toHaveCount(
+    defaults.days.length,
+  );
+  await expect(page.locator(".kitchen-toast")).toContainText("Chef’s on it!");
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  ready = true;
+  await expect(page.locator(".skeleton-card")).toHaveCount(0, {
+    timeout: 10000,
+  });
+  await expect(page.locator(".kitchen-toast")).toContainText(
+    "Your week is ready to review",
+  );
 });

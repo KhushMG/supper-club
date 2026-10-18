@@ -56,10 +56,9 @@ export async function reserveCall() {
   try {
     const r = await tx.execute("SELECT day,calls FROM agent_usage");
     const lifetime = r.rows.reduce((n, x) => n + Number(x.calls), 0);
-    const daily = Number(r.rows.find((x) => x.day === day)?.calls || 0);
-    if (daily >= 20 || lifetime >= 200)
+    if (lifetime >= 200)
       throw new Error(
-        "AI spending guard reached. Maximum 20 calls/day and 200 total calls; review usage before increasing limits.",
+        "AI spending guard reached. Maximum 200 total calls; review usage before increasing limits.",
       );
     await tx.execute({
       sql: "INSERT INTO agent_usage(day,calls) VALUES(?,1) ON CONFLICT(day) DO UPDATE SET calls=calls+1",
@@ -103,7 +102,7 @@ export async function usageSummary() {
         Number(x.output || 0) * 1.6 +
         Number(fees.rows[0].total || 0)) /
       1e6,
-    dailyCallLimit: 20,
+    dailyCallLimit: null,
     lifetimeCallLimit: 200,
   };
 }

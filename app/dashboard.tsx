@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -38,7 +38,7 @@ type Data = State & {
   aiUsage?: {
     calls: number;
     estimatedUsd: number;
-    dailyCallLimit: number;
+    dailyCallLimit: number | null;
     lifetimeCallLimit: number;
   };
   recipes: Recipe[];
@@ -146,7 +146,28 @@ export default function Dashboard() {
       history.replaceState({}, "", "/");
     }
   }, [refresh, act]);
+  const observedPlanning = useRef<string | undefined>(undefined);
   const runningAgent = data?.agentRuns?.find((r) => r.status === "running");
+  const findingDinners =
+    busy === "Finding your dinners" || runningAgent?.kind === "planning";
+  const placingOrder = !!pendingOrder || runningAgent?.kind === "execution";
+  useEffect(() => {
+    if (runningAgent?.kind === "planning")
+      observedPlanning.current = runningAgent.id;
+    const finished = data?.agentRuns?.find(
+      (r) =>
+        r.id === observedPlanning.current && r.status === "awaiting_approval",
+    );
+    if (finished) {
+      setNotice("Dinner is served (almost)! Your week is ready to review.");
+      observedPlanning.current = undefined;
+    }
+  }, [data, runningAgent]);
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(""), 6500);
+    return () => clearTimeout(timer);
+  }, [notice]);
   useEffect(() => {
     if ((!runningAgent && !pendingOrder) || settings) return;
     const timer = setInterval(() => refresh().catch(() => {}), 4000);
@@ -276,6 +297,8 @@ export default function Dashboard() {
       setError((e as Error).message);
       return;
     }
+    setSettings(false);
+    setTab("week");
     if (
       await act(
         "plans/generate",
@@ -287,7 +310,7 @@ export default function Dashboard() {
       setTab("week");
       setNotice(
         data?.integrations.ai
-          ? "Finding dinners for you. Review the recipes, then approve the week and order together."
+          ? "Chef’s on it! Hunting down your next favorite dinners."
           : "Your week is ready. Review it, then approve the order.",
       );
     }
@@ -486,25 +509,67 @@ export default function Dashboard() {
               </button>
             </div>
           )}
-          {notice && (
-            <div className="alert success" role="status">
-              {notice}
-              <button onClick={() => setNotice("")} aria-label="Dismiss notice">
-                <X size={16} />
-              </button>
-            </div>
-          )}
-          {busy && (
+          {busy && !findingDinners && !placingOrder && (
             <div className="busy" role="status">
               <LoaderCircle className="spin" size={16} />
               {busy.includes("/") ? "Updating your kitchen…" : busy + "…"}
             </div>
           )}
-          {!data && !error ? (
-            <div className="loading">
-              <LoaderCircle className="spin" />
-              Setting the table…
-            </div>
+          {findingDinners || placingOrder || (!data && !error) ? (
+            <section
+              className="kitchen-loading"
+              aria-busy="true"
+              aria-label={
+                placingOrder
+                  ? "Processing your approved order"
+                  : "Loading dinner menu"
+              }
+            >
+              <div className="loading-intro" role="status">
+                <div className="loading-emblem">
+                  <LoaderCircle className="spin" size={70} aria-hidden="true" />
+                  <ChefHat size={28} aria-hidden="true" />
+                </div>
+                <p className="eyebrow">
+                  {placingOrder
+                    ? "ONE LESS THING ON YOUR PLATE"
+                    : "A LITTLE SOMETHING GOOD IS COOKING"}
+                </p>
+                <h2>
+                  {placingOrder
+                    ? "Aprons off. We’ve got this."
+                    : findingDinners
+                      ? "Finding your next favorite dinners…"
+                      : "Setting the table…"}
+                </h2>
+                <p>
+                  {placingOrder
+                    ? "Confirming your test payment and scheduling this week’s simulated deliveries. Hang tight!"
+                    : "Searching recipes, gathering ingredients, and making it all fit your budget."}
+                </p>
+                <small>
+                  This can take a minute. We’ll let you know when it’s ready.
+                </small>
+              </div>
+              {!placingOrder && (
+                <div className="meal-grid skeleton-menu" aria-hidden="true">
+                  {Array.from(
+                    { length: preferences.days.length || 5 },
+                    (_, i) => (
+                      <div className="skeleton-card" key={i}>
+                        <div className="skeleton skeleton-day" />
+                        <div className="skeleton skeleton-photo" />
+                        <div className="skeleton-copy">
+                          <div className="skeleton skeleton-title" />
+                          <div className="skeleton skeleton-line" />
+                          <div className="skeleton skeleton-meta" />
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
+              )}
+            </section>
           ) : (
             <>
               <section className="overview">
@@ -1151,6 +1216,31 @@ export default function Dashboard() {
           </footer>
         </div>
       </main>
+      {(notice || findingDinners || placingOrder) && !orderComplete && (
+        <div className="kitchen-toast" role="status">
+          {findingDinners || placingOrder ? (
+            <LoaderCircle className="spin" size={22} aria-hidden="true" />
+          ) : (
+            <CheckCircle2 size={22} aria-hidden="true" />
+          )}
+          <span>
+            {placingOrder
+              ? "Your week is approved. Let’s get this kitchen stocked!"
+              : findingDinners
+                ? "Chef’s on it! A delicious week is in the works."
+                : notice}
+          </span>
+          {!findingDinners && !placingOrder && (
+            <button
+              className="text-button"
+              aria-label="Dismiss notice"
+              onClick={() => setNotice("")}
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+      )}
       {orderComplete && (
         <div className="modal-backdrop">
           <section
