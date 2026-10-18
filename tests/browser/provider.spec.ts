@@ -34,6 +34,15 @@ test('confirmed delivery persists, fast demo advances after navigation, and canc
    const cancel=await request.post('/api/sandbox/cancel',{headers:{Origin:'http://localhost:3100'},data:{planId:plan.id,batchId:plan.batches[0].id}});
    expect(cancel.ok()).toBe(true);
    await page.reload();await expect(page.locator('.delivery-status').first()).toHaveText('Cancelled');
+   const card=page.locator('.delivery-record-card').nth(1);
+   await card.getByRole('button',{name:'Next stage: Out for delivery',exact:true}).click();
+   await expect(card.locator('.delivery-status')).toHaveText('Out for delivery');
+   await page.reload();
+   await expect(card.locator('.delivery-status')).toHaveText('Out for delivery');
+   await card.getByRole('button',{name:'Next stage: Delivered',exact:true}).click();
+   await expect(card.locator('.delivery-status')).toHaveText('Delivered');
+   await expect(card.getByRole('status')).toHaveText('Delivery complete. Your test order and receipt are saved.');
+   await expect(card.getByRole('button',{name:/Next stage/})).toHaveCount(0);
    await page.setViewportSize({width:390,height:844});
    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  } finally {

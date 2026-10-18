@@ -198,3 +198,14 @@ test('suitable packages are ranked by upfront price before description length',(
   const bad={...product('Oregano Shampoo'),productId:'bad',items:[{price:{regular:0.99}}]};
   assert.equal(parseProduct({data:[bulk,bad,regular]},'oregano')?.productId,'regular');
 });
+
+test('publisher unit and extra labels do not block real groceries',()=>{
+ for(const [ingredient,description] of [['1.25 oz packet chili seasoning','Chili Seasoning Mix'],['15 or 16-oz cans black beans','Black Beans'],['unit lime','Fresh Lime'],['unit coconut milk','Coconut Milk'],['extra salsa','Tomato Salsa'],['unit chicken stock concentrate','Chicken Broth Concentrate']])
+   assert.ok(parseProduct({data:[product(description)]},ingredient),ingredient);
+ assert.equal(parseProduct({data:[product('Chicken Broth')]},'unit chicken stock concentrate'),undefined);
+});
+
+test('alternate metric amounts and publisher notes do not become product names',()=>{
+ for(const [ingredient,description] of [["stalk celery","Celery"],["squeeze of lime juice","Lime Juice"],["thai sweet chile sauce","Thai Sweet Chili Sauce"],["/ 180g spaghetti pasta","Spaghetti Pasta"],["/ 300g ripe tomatoes - i've used a mix of roma and grape tomatoes. canned is great too","Ripe Tomatoes"],["finely grated parmesan cheese - optional","Grated Parmesan Cheese"],["handful fresh basil leaves","Fresh Basil Leaves"],["a pinch of white pepper","White Pepper"],["or 7 ml light soy sauce","Light Soy Sauce"]])
+  assert.ok(parseProduct({data:[product(description)]},ingredient),ingredient);
+});

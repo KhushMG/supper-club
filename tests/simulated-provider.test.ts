@@ -4,7 +4,7 @@ import { makePlan, approve } from '../lib/domain';
 import {defaults} from './preferences';
 import {recipes} from '../lib/recipes';
 import {prepareSimulation,validSimulation} from '../lib/simulation';
-import {placeSimulatedOrders,advanceFulfillment,startDeliveryDemo,cancelSimulatedOrder} from '../lib/simulated-provider';
+import {placeSimulatedOrders,advanceFulfillment,startDeliveryDemo,cancelSimulatedOrder,nextDeliveryStage} from '../lib/simulated-provider';
 function fixture() {
  const p=makePlan(recipes,{...defaults,budgetCents:50000},'2030-04-01');
  p.pricingSource='kroger';
@@ -45,4 +45,18 @@ test('cancellation remains cancelled during retries and scheduled fulfillment',(
  cancelSimulatedOrder(p.batches[0],now);placeSimulatedOrders(p,now);
  advanceFulfillment(p,new Date('2031-01-01'));
  assert.equal(p.batches[0].status,'cancelled');assert.equal(p.batches[0].fulfillment?.events.length,2);
+});
+
+test('manual next stage is durable, stops automatic progression and does not skip on retry',()=>{
+ const p=fixture();placeSimulatedOrders(p,now);startDeliveryDemo(p,now);
+ const b=p.batches[0];
+ assert.equal(nextDeliveryStage(b,'confirmed',now),true);
+ assert.equal(nextDeliveryStage(b,'confirmed',now),false);
+ advanceFulfillment(p,new Date('2031-01-01'));
+ assert.equal(b.fulfillment?.stage,'shopping');
+ const restored=JSON.parse(JSON.stringify(b));
+ nextDeliveryStage(restored,'shopping',now);nextDeliveryStage(restored,'out_for_delivery',now);
+ assert.equal(restored.status,'delivered');assert.equal(restored.fulfillment.events.length,4);
+ assert.throws(()=>nextDeliveryStage(restored,'delivered',now),/ended/);
+ assert.throws(()=>nextDeliveryStage(fixture().batches[0],'confirmed',now),/place the test order/);
 });

@@ -12,7 +12,7 @@ import {
   withinCookingLimit,
 } from "./domain";
 import { readState, mutate } from "./db";
-import { livePrices } from "./grocery-prices";
+import { livePrices, parseProduct } from "./grocery-prices";
 import { pricePlan, retailRequirements } from "./kroger-basket";
 import { runOrderAgent } from "./order-agent";
 import { tool, callModel, type AgentTool } from "./agent-model";
@@ -35,7 +35,7 @@ const planningTools: AgentTool[] = [
   tool(
     "search_products",
     "Look up Kroger package prices for ingredient names at the household store. Results are cached for 15 minutes.",
-    { ingredients: { type: "array", items: string } },
+    { ingredients: { type: "array", minItems: 1, maxItems: 12, items: {type: "string", minLength: 1, maxLength: 200} } },
   ),
   tool(
     "build_basket",
@@ -73,13 +73,12 @@ const planningTools: AgentTool[] = [
   ),
 ];
 export function toolsForPlanning(run: AgentRun): AgentTool[] {
-  if (run.budgetResearchRequired) return planningTools.filter(t => t.name === "search_recipes");
-  return planningTools.filter(t => t.name !== "build_basket" || run.catalog.length > 0).map(t => {
+  return planningTools.map(t => {
     if (t.name !== "build_basket") return t;
     const bound = structuredClone(t);
     const parameters = bound.parameters as {properties: {meals: {items: {properties: {recipeId: Record<string, unknown>}}}}};
     parameters.properties.meals.items.properties.recipeId = {
-      type: "string", enum: run.catalog.map(r => r.id),
+      type: "string", ...(run.catalog.length ? {enum: run.catalog.map(r => r.id)} : {}),
       description: "Use an exact ID from the retrieved recipe catalog. Search results are already fetched; do not invent or shorten IDs.",
     };
     return bound;
@@ -400,7 +399,7 @@ export async function agentTool(
   if (name === "search_products") {
     const a = z
       .object({
-        ingredients: z.array(z.string().min(1).max(80)).min(1).max(12),
+        ingredients: z.array(z.string().min(1).max(200)).min(1).max(12),
       })
       .parse(args);
     const probe = {
@@ -435,7 +434,7 @@ export async function agentTool(
           .min(1)
           .max(7),
         selections: z
-          .array(z.object({ ingredient: z.string(), productId: z.string() }))
+          .array(z.object({ ingredient: z.string().max(200), productId: z.string() }))
           .max(80),
       })
       .parse(args);
@@ -475,14 +474,21 @@ export async function agentTool(
       const found = prices.items.find(
         (p) => p.ingredient === choice.ingredient,
       );
+      const offered = run.offers?.storeId === prices.storeId && run.offers?.environment === prices.environment
+        ? run.offers.items.flatMap(item => [...(item.regularCents !== undefined && !item.error ? [item] : []), ...(item.alternatives || [])]).find(item => item.productId === choice.productId)
+        : undefined;
+      // A separate product search is usable only at this store and when its
+      // actual description still matches the original required ingredient.
+      const verifiedOffer = offered && parseProduct({data:[{productId:offered.productId,description:offered.description,items:[{size:offered.size,price:{regular:offered.regularCents! / 100}}]}]}, choice.ingredient);
       const product = found?.alternatives?.find(
         (p) => p.productId === choice.productId,
-      );
+      ) || verifiedOffer;
       if (!found || !product)
         throw new Error(
           "Selected product was not returned by Kroger for this ingredient at this store.",
         );
       Object.assign(found, product);
+      delete found.error;
     }
     await pricePlan(plan, prices);
     if (plan.pricingError)
@@ -490,7 +496,7 @@ export async function agentTool(
         "Kroger lookup unavailable. No complete simulation quote; try again later.",
       );
     run.candidate = plan;
-    run.budgetResearchRequired = !plan.simulationQuote || plan.totalCents > run.preferences.budgetCents;
+    run.budgetResearchRequired = plan.totalCents > run.preferences.budgetCents;
     return {
       totalCents: plan.totalCents,
       budgetCents: plan.preferences.budgetCents,
@@ -567,6 +573,8 @@ export async function agentTool(
     return { saved: true, planId: run.planId, orderingAuthorized: false };
   }
   if (name === "report_blocker") {
+    if (run.preferences.cuisines.every(c=>run.catalog.some(r=>r.cuisine===c)) && !run.candidate && !run.trace.some(t=>t.tool==="build_basket"))
+      throw new Error("build_basket and search_products ARE available. Complete verified recipes are stored server-side for every selected cuisine. Call build_basket with exact catalog recipe IDs for every requested day and selections: [] before concluding that pricing is unavailable. A failed extra publisher fetch does not invalidate saved recipes.");
     if (run.budgetResearchRequired) throw new Error("The basket is over budget. Research a cheaper dinner and rebuild before reporting a blocker.");
     const a = z.object({ reason: z.string().max(1000) }).parse(args);
     run.status = "failed";
@@ -600,6 +608,7 @@ export async function driveAgent(id: string) {
   try {
     run = await getRun(id);
     if (!run || run.status !== "running") return;
+    if (run.budgetResearchRequired && run.candidate && run.candidate.totalCents <= run.preferences.budgetCents) run.budgetResearchRequired = false;
     const deadline = Date.now() + 200000;
     while (run.status === "running" && Date.now() < deadline) {
       if (!run.pending) {
@@ -614,6 +623,7 @@ export async function driveAgent(id: string) {
           run.input,
           run.kind === "planning" ? toolsForPlanning(run) : executionTools,
           system +
+            (run.kind === "planning" ? ` Available actions include build_basket and search_products throughout planning. The server currently holds ${run.catalog.length} complete verified recipes. Recipe summaries may omit ingredients for brevity; build_basket uses their FULL stored ingredients. Never re-fetch a catalog recipe merely because a summary is short. A 404 for another URL does not invalidate this catalog. Catalog: ${JSON.stringify(run.catalog.map(r=>({id:r.id,cuisine:r.cuisine,title:r.title})))}.` : "") +
             (run.budgetResearchRequired ? ` Your last basket cost $${(run.candidate!.totalCents / 100).toFixed(2)} against the hard $${(run.preferences.budgetCents / 100).toFixed(2)} cap. You MUST search a different cheaper dinner now, in the same requested cuisines. Avoid the costly protein or specialty ingredients from the last basket.` : "") +
             (run.kind === "execution" ? ` Remaining execution turns: ${planningTurnLimit(run) - run.calls + 1}.` : " Save the proposal as soon as its full basket fits the budget."),
           run.kind === "planning",
@@ -660,9 +670,16 @@ export async function driveAgent(id: string) {
         });
         run.pending = run.pending.filter((x) => x.call_id !== call.call_id);
         await saveRun(run);
+        // A complete, valid proposal is the planning finish line. Persist it
+        // without buying another model turn or letting later research replace it.
+        if (!failed && run.kind === "planning" && call.name === "build_basket" &&
+            run.candidate && validSimulation(run.candidate) &&
+            run.candidate.totalCents <= run.preferences.budgetCents) {
+          await saveReadyProposal(run);
+        }
         if (run.status !== "running") break;
       }
-      if (!run.pending.length) delete run.pending;
+      if (!run.pending?.length) delete run.pending;
       await saveRun(run);
     }
   } catch (e) {

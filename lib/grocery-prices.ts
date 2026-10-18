@@ -49,8 +49,11 @@ export function normalizeIngredient(search: string) {
     .replace(/\([^)]*\)/g, " ")
     .replace(/\s+\d+\.\d+\)?$/, "")
     .replace(/[()]/g, " ")
-    .replace(/^\d+(?:\.\d+)?[ -]*(?:oz|ounce|lb|pound)s?\.?\s+(?:cans?|jars?|packages?)\s+/i, "")
-    .replace(/^(?:(?:c\.|cups?|pinch|to serve|for serving|peeled|warmed|grated|shredded|sliced)\s+)+/, "")
+    .replace(/^(?:\/|or)\s*\d+(?:\.\d+)?\s*(?:g|kg|ml|l|oz)\s+/i, "")
+    .replace(/^(?:(?:a\s+)?pinch(?:\s+of)?|handfuls?|stalks?|squeeze(?:\s+of)?|finely\s+grated)\s+/i, "")
+    .replace(/\s+[-–—]\s+(?:optional|i(?:'|’)ve|for serving|to taste)\b.*$/i, "")
+    .replace(/^\d+(?:\.\d+)?(?:\s+or\s+\d+(?:\.\d+)?)?[ -]*(?:oz|ounce|lb|pound)s?\.?\s+(?:cans?|jars?|packages?|packets?)\s+/i, "")
+    .replace(/^(?:(?:c\.|cups?|units?|extra|pinch|to serve|for serving|peeled|warmed|grated|shredded|sliced)\s+)+/, "")
     .replace(
       /^(?:(?:can|cans|fresh|freshly|chopped|minced|cracked)\s+)+/,
       "",
@@ -58,10 +61,12 @@ export function normalizeIngredient(search: string) {
     .replace(/\s+hot or mild$/, "")
     .replace(/\s+(?:wedges|slices)$/, "")
     .replace(/garbanzo beans?/g, "chickpeas")
+    .replace(/chicken stock concentrate/g, "chicken broth concentrate")
     .replace(/\bbasil leaves\b/g, "basil")
     .replace(/parmigiano[ -]reggiano/g, "parmesan")
     .replace(/\bserrano (?:chiles?|chill?i(?:es)?)\b/g, "serrano pepper")
     .replace(/red pepper flakes/g, "crushed red pepper")
+    .replace(/\b(?:chiles?|chill?ies|chilli)\b/g, "chili")
     .replace(/fettucine/g, "fettuccine")
     .replace(/\s+/g, " ")
     .trim();
@@ -418,7 +423,7 @@ export async function livePrices(
     ...new Set(plan.batches.flatMap((b) => b.groceries.map((g) => g.name))),
   ];
   const key =
-    "kroger-v4:" +
+    "kroger-v6:" +
     cacheKey({
       environment: krogerEnvironment(),
       zip: plan.preferences.zip,

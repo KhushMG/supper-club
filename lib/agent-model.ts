@@ -72,6 +72,9 @@ export function compactInput(input: unknown[]): unknown[] {
           title: r.title,
           cuisine: r.cuisine,
           minutes: r.minutes,
+          servings: r.servings,
+          ingredientCount: Array.isArray(r.ingredients) ? r.ingredients.length : undefined,
+          ingredientNote: "Summary only; full verified ingredients are stored server-side and used by build_basket. No re-fetch needed.",
           ingredients:
             index === latestRecipes && Array.isArray(r.ingredients)
               ? r.ingredients.slice(0, 4)

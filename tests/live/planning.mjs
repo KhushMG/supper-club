@@ -15,17 +15,24 @@ try {
     return response.json();
   };
   const before = await getState();
-  assert.ok(!before.agentRuns.some(r => r.status === 'running'), 'Another run is active; do not interfere');
+  const resumeId=process.env.LIVE_TEST_RUN_ID;
+  assert.ok(!before.agentRuns.some(r => r.status === 'running' && r.id !== resumeId), 'Another run is active; do not interfere');
   const previous = before.plans.find(p => p.id === before.activePlanId);
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  const generate = page.waitForResponse(r => r.url().endsWith('/api/plans/generate') && r.request().method() === 'POST', {timeout: 30000});
-  await page.getByRole('button', { name: /Find (new|my) dinners/ }).click();
-  const response = await generate;
-  assert.ok(response.ok(), `Generate HTTP ${response.status()}`);
-  const {runId} = await response.json();
+  let runId=resumeId;
+  if(resumeId) {
+    const response=await context.request.post('/api/agent/continue',{headers:{Origin:baseURL},data:{runId:resumeId}});
+    assert.ok(response.ok(),`Resume HTTP ${response.status()}`);
+  } else {
+    const generate = page.waitForResponse(r => r.url().endsWith('/api/plans/generate') && r.request().method() === 'POST', {timeout: 30000});
+    await page.getByRole('button', { name: /Find (new|my) dinners/ }).click();
+    const response = await generate;
+    assert.ok(response.ok(), `Generate HTTP ${response.status()}`);
+    ({runId}=await response.json());
+  }
   assert.ok(runId, 'Must use the AI planning path');
   console.log(JSON.stringify({startedRun:runId}));
   let state, run, steps = 0;
@@ -48,6 +55,9 @@ try {
   assert.equal(state.payments.length, before.payments.length);
   assert.deepEqual(plan.preferences.cuisines, before.preferences.cuisines);
   assert.ok(plan.totalCents <= plan.preferences.budgetCents);
+  assert.equal(plan.retailBasket?.unresolved, 0, "Every ingredient needs a retailer price");
+  assert.equal(plan.simulationQuote?.mockItemsCents, 0);
+  assert.ok(run.trace.some(step=>step.tool==='build_basket'), "Must actually build a basket");
   assert.equal(plan.meals.length, plan.preferences.days.length);
   for (const cuisine of plan.preferences.cuisines) assert.ok(plan.meals.some(m=>m.recipe.cuisine===cuisine));
   for (const {recipe} of plan.meals) {

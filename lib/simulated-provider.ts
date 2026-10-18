@@ -9,6 +9,7 @@ export type Fulfillment = {
   outForDeliveryAt: string;
   deliveredAt: string;
   demo: boolean;
+  manual?: boolean;
   events: { stage: Fulfillment["stage"]; at: string }[];
 };
 export const fulfillmentLabels: Record<Fulfillment["stage"], string> = {
@@ -46,7 +47,7 @@ export function advanceFulfillment(plan: Plan, now = new Date()) {
   let changes = 0;
   for (const batch of plan.batches) {
     const f = batch.fulfillment;
-    if (!f || batch.status === "cancelled" || f.stage === "cancelled") continue;
+    if (!f || f.manual || batch.status === "cancelled" || f.stage === "cancelled") continue;
     for (const [stage, at] of [
       ["shopping", f.shoppingAt], ["out_for_delivery", f.outForDeliveryAt], ["delivered", f.deliveredAt],
     ] as const) {
@@ -83,4 +84,24 @@ export function cancelSimulatedOrder(batch: Batch, now = new Date()) {
     batch.fulfillment.stage = "cancelled";
     batch.fulfillment.events.push({stage: "cancelled", at: now.toISOString()});
   }
+}
+
+// Compare-and-advance makes repeat clicks/retries safe, even across browser tabs.
+export function nextDeliveryStage(batch: Batch, expectedStage: Fulfillment["stage"], now = new Date()) {
+  const f = batch.fulfillment;
+  if (!f || !batch.orderId) throw new Error("Approve and place the test order first.");
+  if (f.stage !== expectedStage) return false;
+  if (batch.status !== "submitted" || f.stage === "cancelled" || f.stage === "delivered")
+    throw new Error("This delivery has already ended.");
+  const next = {confirmed:"shopping", shopping:"out_for_delivery", out_for_delivery:"delivered"} as const;
+  const stage = next[f.stage];
+  f.manual = true;
+  f.demo = true;
+  f.stage = stage;
+  const at = now.toISOString();
+  if (stage === "shopping") f.shoppingAt = at;
+  if (stage === "out_for_delivery") f.outForDeliveryAt = at;
+  if (stage === "delivered") {f.deliveredAt = at;batch.status = "delivered";}
+  f.events.push({stage, at});
+  return true;
 }

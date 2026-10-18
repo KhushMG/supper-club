@@ -297,7 +297,7 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
   run.catalog=[expensive];
   run.budgetResearchAttempts=20;
   for (const [name,cents] of [["rice",10000],["beans",100]] as const) {
-    await cachePut("kroger-v4:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
+    await cachePut("kroger-v6:"+cacheKey({environment:"production",zip:preferences.zip,names:[name]}),{
       provider:"Kroger",environment:"production",storeId:"fixture",storeName:"Fixture",fetchedAt:new Date().toISOString(),
       items:[{ingredient:name,productId:name,description:name,size:"16 oz",regularCents:cents}],
     },60000);
@@ -317,7 +317,7 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
     const body=JSON.parse(String(init?.body));
     if(body.tools[0].type==="web_search") return Response.json({output:[{type:"message",content:[{text:JSON.stringify({recipes:[{url:cheaper.source,cuisine:"Italian"}]})}]}]});
     modelCalls++;
-    if(modelCalls===1) assert.deepEqual(body.tools.map((t:{name:string})=>t.name),["search_recipes"]);
+    if(modelCalls===1) assert.ok(body.tools.some((t:{name:string})=>t.name==="build_basket"));
     const name=modelCalls===1?"search_recipes":modelCalls===2?"build_basket":"save_proposal";
     const args=modelCalls===1?{cuisine:"Italian",query:"quick beans"}:modelCalls===2?{meals:meals(cheaper.id),selections:[]}:{summary:"New cheaper dinners fit the unchanged budget."};
     return Response.json({output:[{type:"function_call",call_id:"budget-"+modelCalls,name,arguments:JSON.stringify(args)}]});
@@ -326,6 +326,7 @@ test("over-budget basket forces new recipe research, then reprices and saves wit
   const saved=await getRun(run.id);
   assert.equal(saved?.status,"awaiting_approval");
   assert.equal(saved?.budgetResearchAttempts,21);
+  assert.equal(modelCalls,2,"A valid basket saves without paying for another planning turn");
   assert.equal(saved?.preferences.budgetCents,10000);
   const plan=(await readState()).plans.find(p=>p.id===saved?.planId)!;
   assert.ok(plan.totalCents<=10000);
@@ -352,14 +353,48 @@ test("new searches stay on the upcoming week despite existing draft history", as
 });
 test("basket tool only permits retrieved recipe IDs and refreshes as the catalog grows",()=>{
   const run = {catalog:[],budgetResearchRequired:false} as unknown as import("../lib/agent-types").AgentRun;
-  assert.ok(!toolsForPlanning(run).some(t=>t.name==="build_basket"));
+  assert.ok(toolsForPlanning(run).some(t=>t.name==="build_basket"));
   run.catalog=[recipes[0]];
   const schema=()=>toolsForPlanning(run).find(t=>t.name==="build_basket")!.parameters as any;
   assert.deepEqual(schema().properties.meals.items.properties.recipeId.enum,[recipes[0].id]);
   run.catalog.push(recipes[1]);
   assert.deepEqual(schema().properties.meals.items.properties.recipeId.enum,[recipes[0].id,recipes[1].id]);
   run.budgetResearchRequired=true;
-  assert.deepEqual(toolsForPlanning(run).map(t=>t.name),["search_recipes"]);
+  assert.ok(toolsForPlanning(run).some(t=>t.name==="build_basket"));
+});
+test("a failed extra publisher fetch cannot justify claiming basket tools are unavailable", async()=>{
+ const run=await startPlanning({...defaults,cuisines:["Italian"]},"pricing recovery");
+ run.catalog=[{...recipes[0],cuisine:"Italian"}];
+ run.trace.push({at:new Date().toISOString(),tool:"fetch_recipe",summary:"Publisher returned HTTP 404."});
+ await assert.rejects(()=>agentTool(run,"report_blocker",{reason:"This session has no pricing action"}),/ARE available/);
+ assert.equal(run.status,"running");
+ run.trace.push({at:new Date().toISOString(),tool:"build_basket",summary:"Kroger credentials unavailable"});
+ await agentTool(run,"report_blocker",{reason:"Kroger credentials unavailable"});
+ assert.equal(run.status,"failed");await saveRun(run);
+});
+
+test("unpriced ingredients below budget allow another product/basket attempt", async()=>{
+ const prefs={...defaults,cuisines:["Italian"],budgetCents:20000};
+ const run=await startPlanning(prefs,"unpriced recovery");
+ const recipe={...recipes[0],id:"unpriced-rice",cuisine:"Italian",minutes:30,ingredients:["100 g rice"]};
+ run.catalog=[recipe];
+ await cachePut("kroger-v6:"+cacheKey({environment:"production",zip:prefs.zip,names:["rice"]}),{provider:"Kroger",environment:"production",storeId:"fixture",storeName:"Fixture",fetchedAt:new Date().toISOString(),items:[{ingredient:"rice",error:"Unavailable"}]},60000);
+ const args={meals:prefs.days.map(day=>({day,recipeId:recipe.id})),selections:[]};
+ await agentTool(run,"build_basket",args);
+ assert.equal(run.candidate?.simulationQuote,undefined);
+ assert.equal(run.budgetResearchRequired,false);
+ await agentTool(run,"build_basket",args);
+ run.offers={provider:"Kroger",environment:"production",storeId:"other-store",storeName:"Other",fetchedAt:new Date().toISOString(),items:[{ingredient:"rice",productId:"real-rice",description:"Brown Rice",size:"16 oz",regularCents:100}]};
+ const selected={...args,selections:[{ingredient:"rice",productId:"real-rice"}]};
+ await assert.rejects(()=>agentTool(run,"build_basket",selected),/not returned/);
+ run.offers.storeId="fixture";
+ run.offers.items[0].description="Chicken Soup";
+ await assert.rejects(()=>agentTool(run,"build_basket",selected),/not returned/);
+ run.offers.items[0].description="Brown Rice";
+ await agentTool(run,"build_basket",selected);
+ assert.ok(run.candidate?.simulationQuote);
+ assert.equal(run.candidate?.retailBasket?.unresolved,0);
+ run.status="failed";await saveRun(run);
 });
 test("server cache expires and usage remains accurate beyond the former 200-call cap", async () => {
   await cachePut("test", { answer: 42 }, 1000);

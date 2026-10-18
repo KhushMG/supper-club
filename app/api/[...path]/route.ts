@@ -1,4 +1,4 @@
-import { advanceFulfillment, startDeliveryDemo, cancelSimulatedOrder } from "@/lib/simulated-provider";
+import { advanceFulfillment, startDeliveryDemo, cancelSimulatedOrder, nextDeliveryStage } from "@/lib/simulated-provider";
 import { startPlanning, startExecution, driveAgent } from "@/lib/ai-agent";
 import { listRuns, getRun } from "@/lib/agent-runs";
 import { usageSummary } from "@/lib/agent-store";
@@ -339,6 +339,15 @@ async function handle(req: Request) {
         } else await runOrderAgent(args.planId);
       }
       return json({ ok: true });
+    }
+    if (path === "sandbox/next-stage") {
+      const {planId,batchId,expectedStage}=z.object({planId:id,batchId:z.string(),expectedStage:z.enum(["confirmed","shopping","out_for_delivery","delivered","cancelled"])}).parse(body);
+      await mutate(s=>{
+        const batch=s.plans.find(p=>p.id===planId)?.batches.find(b=>b.id===batchId);
+        if(!batch) throw new Error("Delivery not found.");
+        if(nextDeliveryStage(batch,expectedStage)) log(s,`Demo delivery advanced to ${batch.fulfillment!.stage}. No groceries purchased.`);
+      });
+      return json({ok:true});
     }
     if (path === "sandbox/demo") {
       const { planId } = z.object({ planId: id }).parse(body);
