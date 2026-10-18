@@ -140,6 +140,13 @@ const units: Record<string, [string, number]> = {
 };
 export function ingredient(raw: string) {
   const text = raw
+    .replace(/\u2044/g, "/")
+    .replace(/\s+/g, " ")
+    .replace(
+      /^(\d+(?:\.\d+)?)(?:\s*[-–—]\s*|\s+to\s+)(\d+(?:\.\d+)?)(?=\s)/i,
+      (_m, a, b) => String(Math.max(Number(a), Number(b))),
+    )
+    .replace(/^(\d+(?:\.\d+)?)(?=[a-z])/i, "$1 ")
     .replace(/[½¼¾⅓⅔⅛⅜⅝⅞]/g, (c) => fractions[c])
     .replace(/\([^)]*\)/g, "")
     .replace(/\*/g, "")
@@ -159,7 +166,7 @@ export function ingredient(raw: string) {
   let name = match[2].toLowerCase().replace(/\$/g, "").trim(),
     unit = "each",
     factor = 1;
-  const token = name.match(/^([a-z]+)\.?\s+/);
+  const token = name.match(/^([a-z]+)\.?\s+/i);
   if (token && units[token[1]]) {
     [unit, factor] = units[token[1]];
     name = name.slice(token[0].length);

@@ -4,83 +4,156 @@ export const recipes: Recipe[] = snapshots;
 import { recipePage } from "./recipe-page";
 import { createHash } from "node:crypto";
 export { validRecipeUrl } from "./recipe-page";
-function findRecipe(node: unknown): Record<string, unknown> | undefined {
-  if (Array.isArray(node)) {
-    for (const n of node) {
-      const r = findRecipe(n);
-      if (r) return r;
-    }
-  } else if (node && typeof node === "object") {
-    const n = node as Record<string, unknown>;
-    const types = n["@type"];
+export function decodeRecipeText(value: string) {
+  const named: Record<string, string> = {
+    amp: "&",
+    quot: '"',
+    apos: "'",
+    lt: "<",
+    gt: ">",
+    nbsp: " ",
+    frac12: "½",
+    frac14: "¼",
+    frac34: "¾",
+    ndash: "–",
+    mdash: "—",
+    rsquo: "’",
+  };
+  return value
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z0-9]+);/gi, (whole, entity: string) => {
+      if (!entity.startsWith("#")) return named[entity.toLowerCase()] ?? whole;
+      const n =
+        entity[1].toLowerCase() === "x"
+          ? parseInt(entity.slice(2), 16)
+          : parseInt(entity.slice(1), 10);
+      return n > 0 && n <= 0x10ffff ? String.fromCodePoint(n) : whole;
+    })
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function recipeNodes(node: unknown, depth = 0): Record<string, unknown>[] {
+  if (depth > 20 || !node || typeof node !== "object") return [];
+  if (Array.isArray(node))
+    return node.flatMap((n) => recipeNodes(n, depth + 1));
+  const n = node as Record<string, unknown>;
+  const types = Array.isArray(n["@type"]) ? n["@type"] : [n["@type"]];
+  if (types.some((t) => typeof t === "string" && /(?:^|[/#])Recipe$/i.test(t)))
+    return [n];
+  return Object.values(n).flatMap((value) => recipeNodes(value, depth + 1));
+}
+export function durationMinutes(value: unknown) {
+  if (typeof value !== "string") return 0;
+  const m = value.match(
+    /^P(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/i,
+  );
+  return m
+    ? Math.ceil(
+        Number(m[1] || 0) * 1440 +
+          Number(m[2] || 0) * 60 +
+          Number(m[3] || 0) +
+          Number(m[4] || 0) / 60,
+      )
+    : 0;
+}
+export function parseRecipePage(
+  html: string,
+  url: string,
+  cuisine: string,
+): Recipe {
+  const errors: string[] = [];
+  for (const match of html.matchAll(
+    /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi,
+  )) {
     if (
-      types === "Recipe" ||
-      (Array.isArray(types) && types.includes("Recipe"))
+      !/\btype\s*=\s*(?:["']application\/ld\+json(?:\s*;[^"']*)?["']|application\/ld\+json(?=\s|$))/i.test(
+        match[1],
+      )
     )
-      return n;
-    if (n["@graph"]) return findRecipe(n["@graph"]);
+      continue;
+    let nodes: Record<string, unknown>[];
+    try {
+      nodes = recipeNodes(
+        JSON.parse(match[2].trim().replace(/^<!--|-->$/g, "")),
+      );
+    } catch {
+      errors.push("invalid recipe JSON-LD");
+      continue;
+    }
+    for (const node of nodes) {
+      const title =
+        typeof node.name === "string" ? decodeRecipeText(node.name) : "";
+      const ingredients = Array.isArray(node.recipeIngredient)
+        ? node.recipeIngredient
+            .filter((x): x is string => typeof x === "string")
+            .map(decodeRecipeText)
+            .filter(Boolean)
+        : [];
+      const yields = (
+        Array.isArray(node.recipeYield) ? node.recipeYield : [node.recipeYield]
+      ).map(String);
+      const yieldText =
+        yields.find((x) => /servings?|people|persons?/i.test(x)) ||
+        yields[0] ||
+        "";
+      const servings = Number(yieldText.match(/\d+(?:\.\d+)?/)?.[0]);
+      const minutes =
+        durationMinutes(node.totalTime) ||
+        durationMinutes(node.prepTime) + durationMinutes(node.cookTime);
+      if (
+        !title ||
+        !ingredients.length ||
+        ingredients.length !== (node.recipeIngredient as unknown[])?.length ||
+        !Number.isFinite(servings) ||
+        servings <= 0 ||
+        !minutes
+      ) {
+        errors.push("missing title, ingredients, servings or cooking duration");
+        continue;
+      }
+      const image = Array.isArray(node.image) ? node.image[0] : node.image;
+      const rawImage =
+        typeof image === "string"
+          ? image
+          : String((image as Record<string, unknown>)?.url || "");
+      let imageUrl = "";
+      try {
+        const u = new URL(rawImage, url);
+        if (rawImage && u.protocol === "https:") imageUrl = u.href;
+      } catch {}
+      const canonical = new URL(url);
+      canonical.search = "";
+      canonical.hash = "";
+      return {
+        id: createHash("sha256")
+          .update(canonical.href)
+          .digest("hex")
+          .slice(0, 24),
+        title,
+        cuisine,
+        source: canonical.href,
+        publisher: canonical.hostname,
+        servings,
+        minutes,
+        ingredients: ingredients.map((x) =>
+          x.replace(/\s*\([^)]*\$[^)]*\)/g, "").trim(),
+        ),
+        image: imageUrl,
+        fetchedAt: new Date().toISOString(),
+      };
+    }
   }
-  return undefined;
+  throw new Error(
+    errors.length
+      ? `Incomplete recipe: ${[...new Set(errors)].join("; ")}.`
+      : "Page has no structured Recipe data (possibly a collection or blocked page).",
+  );
 }
 export async function fetchRecipe(
   url: string,
   cuisine: string,
 ): Promise<Recipe> {
-  const html = await recipePage(url);
-  for (const match of html.matchAll(
-    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
-  )) {
-    let node;
-    try {
-      node = findRecipe(JSON.parse(match[1]));
-    } catch {
-      continue;
-    }
-    if (!node) continue;
-    const ing = node.recipeIngredient;
-    const yieldValue = Array.isArray(node.recipeYield)
-      ? node.recipeYield[0]
-      : node.recipeYield;
-    const servings = Number(String(yieldValue).match(/\d+/)?.[0]);
-    const duration = String(
-      node.totalTime || `${node.prepTime || ""}${node.cookTime || ""}`,
-    );
-    const minutes = [...duration.matchAll(/(\d+)([HM])/g)].reduce(
-      (n, m) => n + Number(m[1]) * (m[2] === "H" ? 60 : 1),
-      0,
-    );
-    if (
-      !Array.isArray(ing) ||
-      !ing.length ||
-      !ing.every((x) => typeof x === "string") ||
-      !servings ||
-      !minutes
-    )
-      throw new Error(
-        "Source is missing ingredients, servings, or preparation time.",
-      );
-    const image = Array.isArray(node.image) ? node.image[0] : node.image;
-    return {
-      id: createHash("sha256").update(url).digest("hex").slice(0, 24),
-      title: String(node.name),
-      cuisine,
-      source: url,
-      publisher: new URL(url).hostname,
-      servings,
-      minutes,
-      ingredients: ing.map((x) =>
-        String(x)
-          .replace(/\s*\([^)]*\$[^)]*\)/g, "")
-          .trim(),
-      ),
-      image:
-        typeof image === "string"
-          ? image
-          : String((image as Record<string, unknown>)?.url ?? ""),
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-  throw new Error("No complete structured recipe found.");
+  return parseRecipePage(await recipePage(url), url, cuisine);
 }
 export async function discover(
   p: Preferences,

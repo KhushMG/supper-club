@@ -18,7 +18,7 @@ test("web discovery is query-driven, cached by feedback, and bounded", async () 
     assert.equal(body.text.format.type, "json_schema");
     assert.equal(body.text.format.strict, true);
     assert.equal(body.tools[0].type, "web_search");
-    assert.equal(body.tools[0].filters, undefined);
+    if (calls < 3) assert.equal(body.tools[0].filters, undefined);
     assert.match(body.input, /noodles/);
     return Response.json({
       output: [
@@ -51,6 +51,19 @@ test("web discovery is query-driven, cached by feedback, and bounded", async () 
     assert.equal(calls, 1);
     await searchRecipeWeb(defaults, "spicy noodles", "", "dinner");
     assert.equal(calls, 2);
+    await assert.rejects(
+      () =>
+        searchRecipeWeb(
+          defaults,
+          "spicy noodles",
+          "",
+          "dinner",
+          [],
+          ["www.seriouseats.com"],
+        ),
+      /no usable recipe/,
+    );
+    assert.equal(calls, 3);
   } finally {
     globalThis.fetch = original;
   }

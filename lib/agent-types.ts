@@ -17,6 +17,7 @@ export type AgentRun = {
   pending?: ModelItem[];
   catalog: Recipe[];
   recentMeals?: string[];
+  unavailablePublishers?: string[];
   offers?: LivePrices;
   candidate?: Plan;
   planId?: string;

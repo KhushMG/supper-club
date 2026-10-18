@@ -71,7 +71,7 @@ export async function recipePage(
         }
         if (res.statusCode !== 200) {
           res.resume();
-          reject(new Error("Could not open recipe source."));
+          reject(new Error(`Publisher returned HTTP ${res.statusCode}.`));
           return;
         }
         const chunks: Buffer[] = [];
