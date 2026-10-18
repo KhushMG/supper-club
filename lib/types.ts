@@ -37,6 +37,7 @@ export type Grocery = {
   totalCents: number;
 };
 export type Batch = {
+  fulfillment?: import("./simulated-provider").Fulfillment;
   id: string;
   days: number[];
   deliveryAt: string;

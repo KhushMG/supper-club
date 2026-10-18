@@ -1,3 +1,4 @@
+import { advanceFulfillment, startDeliveryDemo, cancelSimulatedOrder } from "@/lib/simulated-provider";
 import { startPlanning, startExecution, driveAgent } from "@/lib/ai-agent";
 import { listRuns, getRun } from "@/lib/agent-runs";
 import { usageSummary } from "@/lib/agent-store";
@@ -113,6 +114,7 @@ async function handle(req: Request) {
     }
     if (!authorized(req)) return json({ error: "Please sign in." }, 401);
     if (req.method === "GET" && path === "state") {
+      await mutate(s => { for (const p of s.plans) advanceFulfillment(p); });
       const s = await readState();
       return json({
         ...s,
@@ -338,6 +340,16 @@ async function handle(req: Request) {
       }
       return json({ ok: true });
     }
+    if (path === "sandbox/demo") {
+      const { planId } = z.object({ planId: id }).parse(body);
+      await mutate(s => {
+        const plan = s.plans.find(p => p.id === planId);
+        if (!plan) throw new Error("Delivery not found.");
+        startDeliveryDemo(plan);
+        log(s, "Started a fast delivery demo. No groceries purchased.");
+      });
+      return json({ ok: true });
+    }
     if (path === "sandbox/cancel") {
       const { planId, batchId } = z
         .object({ planId: id, batchId: z.string() })
@@ -347,8 +359,9 @@ async function handle(req: Request) {
           b = p?.batches.find((b) => b.id === batchId);
         if (!b || b.status === "delivered")
           throw new Error("Order cannot be cancelled.");
-        b.status = "cancelled";
-        log(s, "Sandbox cancellation confirmed.");
+        advanceFulfillment(p!);
+        cancelSimulatedOrder(b);
+        log(s, "Sandbox cancellation confirmed. No real charge or refund.");
       });
       return json({ ok: true });
     }

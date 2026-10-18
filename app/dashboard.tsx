@@ -1,4 +1,6 @@
 "use client";
+import { validSimulation } from "@/lib/simulation";
+import { fulfillmentLabels } from "@/lib/simulated-provider";
 import { initials, type Profile } from "@/lib/auth-profile";
 import { ingredientDisplayText } from "@/lib/recipe-display";
 import { NumberField } from "./number-field";
@@ -441,7 +443,7 @@ export default function Dashboard() {
               !!busy ||
               !!runningAgent ||
               !["draft", "paused"].includes(plan.status) ||
-              !plan.simulationQuote ||
+              !validSimulation(plan) ||
               plan.totalCents > plan.preferences.budgetCents ||
               plan.batches.some((b) => !!b.orderId)
             }
@@ -899,13 +901,12 @@ export default function Dashboard() {
                           <span className="status draft">{plan.retailBasket.unresolved > 0 ? `${plan.retailBasket.unresolved} ${plan.retailBasket.unresolved === 1 ? "item needs" : "items need"} review` : "All items priced"}</span>
                         </div>
                         <p className="pricing-updated">Updated {new Date(plan.retailBasket.fetchedAt).toLocaleString("en-US", {month:"short", day:"numeric", hour:"numeric", minute:"2-digit", hour12:true})}</p>
-                        <p>{plan.simulationQuote ? "Test checkout uses mock amounts for unpriced ingredients, fees, and tax. These are not Kroger quotes." : "Final fees, tax, tips, and availability are not confirmed. Real purchases are on hold."}</p>
+                        <p>{plan.simulationQuote ? "Test checkout uses Kroger product prices plus simulated delivery and tax. No real groceries are purchased." : "Final fees, tax, tips, and availability are not confirmed. Real purchases are on hold."}</p>
                         {plan.retailBasket.unresolved > 0 && <details className="pricing-review">
                           <summary>Needs review · ingredients without confirmed prices</summary>
                           <p>Unavailable products are hidden from the shopping list. These ingredients still need a match.</p>
                           <dl>{Array.from(new Set(plan.retailBasket.batches.flatMap(batch => batch.lines.filter(line => line.unitPriceCents === undefined).map(line => line.name)))).map(name => {
-                            const mock = plan.simulationQuote?.missingItems.find(item => item.name === name);
-                            return <div key={name}><dt>{name.replace(/^(?:c\.\s+|pinch\s+|to serve\s+)/i, "")} </dt><dd>{mock ? <>{money(mock.amountCents)}<small>Mock package price</small></> : "Not priced"}</dd></div>;
+                            return <div key={name}><dt>{name.replace(/^(?:c\.\s+|pinch\s+|to serve\s+)/i, "")} </dt><dd>Not priced</dd></div>;
                           })}</dl>
                         </details>}
                       </section>
@@ -1011,7 +1012,7 @@ export default function Dashboard() {
                               <Truck size={21} />
                             </span>
                             <span className={"status " + b.status}>
-                              {b.status}
+                              {b.fulfillment ? fulfillmentLabels[b.fulfillment.stage] : b.status}
                             </span>
                           </div>
                           <h3>Delivery {i + 1}</h3>
@@ -1719,7 +1720,7 @@ function Budget({
 }) {
   const basket = plan?.retailBasket;
   const subtotal = basket?.subtotalCents ?? 0;
-  const simulation = plan?.simulationQuote;
+  const simulation = plan && validSimulation(plan) ? plan.simulationQuote : undefined;
   const displayedTotal = simulation?.totalCents ?? subtotal;
   return (
     <div className="budget-card">
@@ -1748,21 +1749,17 @@ function Budget({
         </div>
         <div>
           <span>
-            {simulation
-              ? "Mock missing items ($5 each)"
-              : "Items needing review"}
+            Items needing review
           </span>
           <span>
-            {simulation
-              ? money(simulation.mockItemsCents)
-              : (basket?.unresolved ?? "Pending")}
+            {basket?.unresolved ?? "Pending"}
           </span>
         </div>
         <div>
           <span>Delivery, tax & tips</span>
           <span>
             {simulation
-              ? money(simulation.feeCents + simulation.taxCents) + " (mock)"
+              ? money(simulation.feeCents + simulation.taxCents + (plan?.batches.reduce((sum,b)=>sum+b.tipCents,0) ?? 0)) + " (test)"
               : "Awaiting quote"}
           </span>
         </div>

@@ -70,6 +70,7 @@ test("completion waits for verified execution and opens the ordered week", async
   plan.agentError = undefined;
   plan.agentPaidRevision = undefined;
   plan.totalCents = 1000;
+  plan.batches.forEach((b:any,i:number)=>{b.totalCents=i===0?1000:0;});
   plan.simulationQuote = {
     revision: plan.revision,
     totalCents: 1000,
@@ -534,8 +535,8 @@ test('pricing summary separates missing ingredients and removes legacy checkout 
   await expect(page.locator('tbody')).toContainText('Whole peeled tomatoes');
   await page.locator('.pricing-review summary').click();
   await expect(page.locator('.pricing-review dt')).toHaveText('basmati rice');
-  await expect(page.locator('.pricing-review dd')).toContainText('$5.00');
-  await expect(summary).toContainText('These are not Kroger quotes.');
+  await expect(page.locator('.pricing-review dd')).toContainText('Not priced');
+  await expect(summary).toContainText('No real groceries are purchased.');
   await page.setViewportSize({width:390,height:844});
   expect(await summary.evaluate(el=>el.getBoundingClientRect().right<=innerWidth)).toBe(true);
   await page.getByRole('link',{name:'Deliveries',exact:true}).click();

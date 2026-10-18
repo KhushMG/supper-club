@@ -27,7 +27,7 @@ test('approval drives payment then scheduled orders; failure, retry, duplicate a
  let s=await readState();assert.equal(s.payments.length,1);assert.ok(s.plans[0].agentError);assert.ok(s.plans[0].batches.every(b=>!b.orderId));
  await runOrderAgent(p.id,stripe,new Date('2030-03-30'));
  assert.equal(keys[0],keys[1]);
- s=await readState();assert.equal(s.payments[0].status,'paid');assert.ok(s.plans[0].batches.every(b=>!b.orderId));
+ s=await readState();assert.equal(s.payments[0].status,'paid');assert.ok(s.plans[0].batches.every(b=>b.orderId && b.fulfillment?.stage==='confirmed'));
  const now=new Date(p.batches[0].orderAt);
  await runOrderAgent(p.id,stripe,now);
  s=await readState();const ids=s.plans[0].batches.map(b=>b.orderId);assert.ok(ids[0]?.startsWith('sandbox_'));
@@ -36,5 +36,17 @@ test('approval drives payment then scheduled orders; failure, retry, duplicate a
  await mutate(s=>{s.plans[0].status='paused'});
  await runOrderAgent(p.id,stripe,new Date('2030-04-05'));
  assert.deepEqual((await readState()).plans[0].batches.map(b=>b.orderId),ids);
+ // A declined PaymentIntent must not create deliveries; expired slots never call Stripe.
+ const declined=structuredClone(p);declined.id=crypto.randomUUID();
+ declined.batches.forEach(b=>{delete b.orderId;delete b.fulfillment;b.status='scheduled';});
+ await mutate(s=>{s.plans.push(declined)});
+ const rejected={paymentIntents:{create:async(args:any)=>({id:'pi_declined',livemode:false,amount:args.amount,currency:'usd',metadata:args.metadata,status:'requires_payment_method'})}} as unknown as Stripe;
+ await runOrderAgent(declined.id,rejected,new Date('2030-03-30'));
+ const failed=(await readState()).plans.find(x=>x.id===declined.id)!;
+ assert.ok(failed.agentError);assert.ok(failed.batches.every(b=>!b.orderId));
+ const expired=structuredClone(declined);expired.id=crypto.randomUUID();
+ await mutate(s=>{s.plans.push(expired)});
+ await runOrderAgent(expired.id,{paymentIntents:{create:async()=>{throw new Error('must not charge')}}} as unknown as Stripe,new Date('2031-01-01'));
+ assert.equal((await readState()).payments.some(x=>x.planId===expired.id),false);
  database().close();
 });

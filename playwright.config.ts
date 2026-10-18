@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 import { existsSync } from "node:fs";
 const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+process.env.E2E_DATABASE_URL ||= `file:/private/tmp/supper-e2e-${Date.now()}.db`;
 export default defineConfig({
   testDir: "tests/browser",
   timeout: 90000,
@@ -29,7 +30,7 @@ export default defineConfig({
       KROGER_CLIENT_ID: "",
       KROGER_CLIENT_SECRET: "",
       TURSO_AUTH_TOKEN: "",
-      TURSO_DATABASE_URL: `file:/private/tmp/supper-e2e-${Date.now()}.db`,
+      TURSO_DATABASE_URL: process.env.E2E_DATABASE_URL,
     },
     timeout: 120000,
   },

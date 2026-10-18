@@ -15,13 +15,13 @@ function fixture() {
     ]}))};
   return p;
 }
-test('simulation preserves real price evidence, labels mock items, and orders idempotently',()=>{
-  const p=fixture();const evidence=JSON.stringify(p.retailBasket);
+test('simulation preserves real prices and orders idempotently',()=>{
+  const p=fixture();p.retailBasket!.batches.forEach(b=>b.lines.pop());const evidence=JSON.stringify(p.retailBasket);
   prepareSimulation(p);
   assert.equal(JSON.stringify(p.retailBasket),evidence);
-  assert.equal(p.simulationQuote?.mockItemsCents,500);
-  assert.equal(p.simulationQuote?.missingItems.length,1);
-  assert.equal(p.totalCents, p.batches.length*(1000+599+80)+540);
+  assert.equal(p.simulationQuote?.mockItemsCents,0);
+  assert.equal(p.simulationQuote?.missingItems.length,0);
+  assert.equal(p.totalCents, p.batches.length*(1000+599+80+defaults.tipCents));
   assert.ok(validSimulation(p));
   approve(p);
   assert.equal(processDue(p,new Date('2030-04-01'),true),p.batches.length);
@@ -29,7 +29,7 @@ test('simulation preserves real price evidence, labels mock items, and orders id
   assert.ok(p.batches.every(b=>b.orderId?.startsWith('sandbox_')));
 });
 test('simulation cannot bypass budget cap or stale quote checks',()=>{
-  const p=fixture();prepareSimulation(p);
+  const p=fixture();p.retailBasket!.batches.forEach(b=>b.lines.pop());prepareSimulation(p);
   p.preferences.budgetCents=p.totalCents-1;
   assert.throws(()=>approve(p),/budget/);
   p.preferences.budgetCents=p.totalCents;
@@ -41,4 +41,10 @@ test('simulation cannot bypass budget cap or stale quote checks',()=>{
 test('simulation requires a fetched basket',()=>{
   const p=fixture();delete p.retailBasket;
   assert.throws(()=>prepareSimulation(p),/Refresh Kroger/);
+});
+
+test('unpriced ingredients never receive fabricated prices or allow approval',()=>{
+ const p=fixture();prepareSimulation(p);
+ assert.equal(p.simulationQuote,undefined);
+ assert.throws(()=>approve(p),/checkout quote/);
 });

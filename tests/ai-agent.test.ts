@@ -276,7 +276,7 @@ test("recipe search reports fetched-but-rejected pages and keeps their publisher
     await saveRun(run);
   }
 });
-test("a within-budget test proposal with missing retailer matches saves with mock costs disclosed", async () => {
+test("unpriced ingredients block saving a proposal", async () => {
   const run = await startPlanning({ ...defaults, budgetCents: 50000 }, "simulation missing prices");
   const plan = makePlan(recipes, run.preferences, run.week);
   plan.retailBasket = {
@@ -286,13 +286,8 @@ test("a within-budget test proposal with missing retailer matches saves with moc
   };
   prepareSimulation(plan);
   run.candidate = plan;
-  const result = await agentTool(run, "save_proposal", {summary:"Test proposal includes labeled mock caper costs, delivery and tax."});
-  assert.equal((result as {saved:boolean}).saved, true);
-  const saved = (await readState()).plans.find(p=>p.id===run.planId)!;
-  assert.equal(saved.simulationQuote?.mockItemsCents, 500);
-  assert.equal(saved.status, "draft");
-  assert.equal(saved.approvedRevision, undefined);
-  await saveRun(run);
+  await assert.rejects(()=>agentTool(run, "save_proposal", {summary:"Missing ingredient"}), /priced basket/);
+  run.status="failed"; await saveRun(run);
 });
 test("over-budget basket forces new recipe research, then reprices and saves without raising the cap", async () => {
   const preferences = {...defaults,cuisines:["Italian"],budgetCents:10000};

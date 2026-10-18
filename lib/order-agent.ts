@@ -1,6 +1,7 @@
+import { placeSimulatedOrders } from "./simulated-provider";
 import type Stripe from "stripe";
 import { mutate } from "./db";
-import { log, processDue } from "./domain";
+import { log } from "./domain";
 import { validSimulation } from "./simulation";
 import { testStripe } from "./stripe";
 import type { Payment, Plan } from "./types";
@@ -26,13 +27,20 @@ export async function runOrderAgent(
   const attempt = await mutate((s) => {
     const p = s.plans.find((p) => p.id === planId);
     if (!ready(p)) return;
+    if (p.batches.some(b => !b.orderId && b.status === "scheduled" && Date.parse(b.deliveryAt) <= now.getTime())) {
+      p.agentError = "Delivery slot expired. Create a future week before checkout.";
+      return;
+    }
     const existing = s.payments.find(
       (x) =>
         x.planId === p.id &&
         x.revision === p.revision &&
         x.status !== "expired",
     );
-    if (existing) return structuredClone(existing);
+    if (existing) {
+      if (existing.amountCents !== p.totalCents) throw new Error("Approved payment amount changed.");
+      return structuredClone(existing);
+    }
     const payment: Payment = {
       id: crypto.randomUUID(),
       planId: p.id,
@@ -97,7 +105,7 @@ export async function runOrderAgent(
           delete payment.error;
           log(
             s,
-            "Ordering agent verified Stripe test payment. Simulated grocery orders will submit at their scheduled times.",
+            "Ordering agent verified Stripe test payment. Simulated grocery orders are ready to confirm.",
           );
         }
       });
@@ -115,7 +123,7 @@ export async function runOrderAgent(
         return;
       p.agentPaidRevision = p.revision;
       delete p.agentError;
-      const count = processDue(p, now);
+      const count = placeSimulatedOrders(p, now);
       if (count)
         log(
           s,

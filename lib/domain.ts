@@ -1,3 +1,4 @@
+import { advanceFulfillment } from "./simulated-provider";
 import { validSimulation } from "./simulation";
 import { z } from "zod";
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
@@ -491,6 +492,7 @@ export function pause(p: Plan) {
   });
 }
 export function processDue(p: Plan, now = new Date(), force = false) {
+  advanceFulfillment(p, now);
   if (p.pricingSource === "kroger" && !validSimulation(p)) return 0;
   if (p.status !== "approved" || p.approvedRevision !== p.revision) return 0;
   if (p.autoOrder && p.agentPaidRevision !== p.revision) return 0;
@@ -500,7 +502,7 @@ export function processDue(p: Plan, now = new Date(), force = false) {
     .filter((b) => ["submitted", "delivered"].includes(b.status))
     .reduce((a, b) => a + b.totalCents, 0);
   for (const b of p.batches) {
-    if (b.status === "submitted" && new Date(b.deliveryAt) <= now)
+    if (!b.fulfillment && b.status === "submitted" && new Date(b.deliveryAt) <= now)
       b.status = "delivered";
     if (b.status !== "scheduled" || (!force && new Date(b.orderAt) > now))
       continue;

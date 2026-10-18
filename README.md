@@ -56,7 +56,7 @@ Only the household knows the password. This prototype is single-household, not a
 
 ### Scheduled processing while closed
 
-Set `CRON_SECRET` to a random secret, then arrange an hourly authenticated `GET /api/jobs`:
+Set `CRON_SECRET` to a random secret, then arrange an hourly authenticated request: `GET /api/jobs`:
 
 ```sh
 curl -H "Authorization: Bearer $CRON_SECRET" "$APP_URL/api/jobs"
@@ -162,3 +162,14 @@ First-time Google identities complete a three-step preferences survey before the
 ## Navigation and delivery records
 
 The kitchen sections have permanent routes: `/`, `/groceries`, `/deliveries`, and `/activity`. The order-completion dialog links to `/deliveries/<plan-id>`. That authenticated server-rendered page reads the saved week, delivery batches, grocery lines, payment status, and simulation order references from Turso; it does not depend on the currently selected week or browser storage. Unknown week IDs return 404. Status refreshes every 30 seconds while visible, and refresh never starts planning, pays, or submits an order. Fulfillment remains explicitly simulated.
+
+
+## Simulated grocery provider
+
+After the exact weekly quote is approved, the execution agent verifies a Stripe **test** payment and immediately creates persistent future delivery orders through `lib/simulated-provider.ts`. Order IDs are deterministic per delivery; retries reuse the payment attempt and never duplicate orders. Real purchases remain disabled.
+
+New quotes require all ingredient prices. The former $5 missing-item fallback is removed. Missing products cause the planner to research another matching product or dinner. Simulated charges are $5.99 per nonempty delivery plus 8% tax and the user's configured tip; these are test fixtures, not Kroger checkout quotes. Basket changes invalidate the saved quote, and the server enforces the approved weekly cap.
+
+Delivery records track Confirmed → Shopping → Out for delivery → Delivered. Events and timestamps persist in Turso. The authenticated scheduler processes them hourly (GitHub scheduling may be delayed); page reads also catch up elapsed events. In a delivery record, expand **Demo controls → Run fast delivery demo** to simulate shopping at 30 seconds, transit at 90 seconds, and delivery at 150 seconds. This changes only simulation timestamps and preserves the originally selected delivery date. No AI calls or real purchases are made by fast playback. Cancellation is available until transit; test cancellation does not issue a Stripe refund.
+
+Regression coverage includes payment failure/retry, duplicate submissions, missing prices, expired slots, altered quotes, budget enforcement, cancellation, durable fulfillment catch-up, and the delivery page in Chrome.

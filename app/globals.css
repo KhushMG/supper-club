@@ -1979,3 +1979,11 @@ textarea {
 .grocery-pending { padding: 32px; max-width: 760px; }
 .grocery-pending > svg { color: #627653; margin-bottom: 8px; }
 .grocery-pending p { line-height: 1.7; margin: 12px 0 20px; }
+
+.fulfillment-timeline { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; list-style:none; padding:0; margin:24px 0; }
+.fulfillment-timeline li { border-top:3px solid var(--line,#dedfd5); padding-top:12px; color:#75796e; }
+.fulfillment-timeline li.complete { border-color:#758863; color:#364a2d; }
+.fulfillment-timeline small { display:block; margin-top:6px; }
+.demo-controls { margin-top:12px; max-width:300px; font-size:14px; }
+.demo-controls summary { cursor:pointer; }
+@media(max-width:600px) { .fulfillment-timeline { grid-template-columns:repeat(2,minmax(0,1fr)); } }
